@@ -22,4 +22,16 @@ class WeatherSnapshot {
       iconUrl: json['iconUrl'] as String?,
     );
   }
+
+  WeatherSnapshot copyWith({
+    double? temperatureCelsius,
+    String? description,
+    String? iconUrl,
+  }) {
+    return WeatherSnapshot(
+      temperatureCelsius: temperatureCelsius ?? this.temperatureCelsius,
+      description: description ?? this.description,
+      iconUrl: iconUrl ?? this.iconUrl,
+    );
+  }
 }

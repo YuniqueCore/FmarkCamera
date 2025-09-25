@@ -1,5 +1,6 @@
 import 'package:fmark_camera/src/domain/models/watermark_media_type.dart';
 import 'package:fmark_camera/src/domain/models/watermark_profile.dart';
+import 'package:fmark_camera/src/domain/models/watermark_context.dart';
 
 class WatermarkProject {
   const WatermarkProject({
@@ -12,6 +13,7 @@ class WatermarkProject {
     this.previewRatio,
     this.overlayPath,
     this.thumbnailPath,
+    this.thumbnailData,
   });
 
   final String id;
@@ -23,6 +25,7 @@ class WatermarkProject {
   final double? previewRatio;
   final String? overlayPath;
   final String? thumbnailPath;
+  final String? thumbnailData;
 
   WatermarkProject copyWith({
     String? mediaPath,
@@ -33,6 +36,7 @@ class WatermarkProject {
     double? previewRatio,
     String? overlayPath,
     String? thumbnailPath,
+    String? thumbnailData,
   }) {
     return WatermarkProject(
       id: id,
@@ -44,6 +48,7 @@ class WatermarkProject {
       previewRatio: previewRatio ?? this.previewRatio,
       overlayPath: overlayPath ?? this.overlayPath,
       thumbnailPath: thumbnailPath ?? this.thumbnailPath,
+      thumbnailData: thumbnailData ?? this.thumbnailData,
     );
   }
 
@@ -57,6 +62,7 @@ class WatermarkProject {
         'previewRatio': previewRatio,
         'overlayPath': overlayPath,
         'thumbnailPath': thumbnailPath,
+        'thumbnailData': thumbnailData,
       };
 
   factory WatermarkProject.fromJson(Map<String, dynamic> json) {
@@ -81,6 +87,7 @@ class WatermarkProject {
       previewRatio: (json['previewRatio'] as num?)?.toDouble(),
       overlayPath: json['overlayPath'] as String?,
       thumbnailPath: json['thumbnailPath'] as String?,
+      thumbnailData: json['thumbnailData'] as String?,
     );
   }
 }

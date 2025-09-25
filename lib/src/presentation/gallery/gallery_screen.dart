@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+
 import 'package:intl/intl.dart';
 import 'package:path/path.dart' as p;
 
@@ -10,6 +12,7 @@ import 'package:fmark_camera/src/domain/models/watermark_project.dart';
 import 'package:fmark_camera/src/domain/models/watermark_profile.dart';
 import 'package:fmark_camera/src/domain/repositories/project_repository.dart';
 import 'package:fmark_camera/src/domain/repositories/watermark_profile_repository.dart';
+import 'package:fmark_camera/src/presentation/templates/watermark_profile_editor_screen.dart';
 import 'package:fmark_camera/src/services/bootstrapper.dart';
 import 'package:fmark_camera/src/services/watermark_context_controller.dart';
 import 'package:fmark_camera/src/services/watermark_exporter.dart';
@@ -53,9 +56,21 @@ class _GalleryScreenState extends State<GalleryScreen> {
     final projects = await _projectRepository.loadProjects();
     final profiles = await _profileRepository.loadProfiles();
     final profileMap = {for (final profile in profiles) profile.id: profile};
+    final populatedProjects = projects.reversed.toList();
+    final thumbMap = <String, Uint8List>{};
+    for (final project in populatedProjects) {
+      final data = project.thumbnailData;
+      if (data == null) {
+        continue;
+      }
+      try {
+        thumbMap[project.id] = base64Decode(data);
+      } catch (_) {}
+    }
     setState(() {
-      _projects = projects.reversed.toList();
+      _projects = populatedProjects;
       _profileIndex = profileMap;
+      _thumbnails = thumbMap;
       _loading = false;
     });
     unawaited(_ensureThumbnails());
@@ -159,25 +174,43 @@ class _GalleryScreenState extends State<GalleryScreen> {
       return;
     }
     setState(() => _generatingThumbs = true);
-    final updated = {..._thumbnails};
+    final updatedThumbnails = {..._thumbnails};
+    final updatedProjects = <WatermarkProject>[];
     for (final project in _projects) {
-      if (updated.containsKey(project.id)) {
+      if (updatedThumbnails.containsKey(project.id)) {
         continue;
       }
       try {
-        final bytes = await _composeThumbnail(project);
-        if (bytes != null) {
-          updated[project.id] = bytes;
-        }
+        final bytes = await _renderer.renderToBytes(
+          profile: _profileIndex[project.profileId]!,
+          context: _contextController.context,
+          canvasSize: project.canvasSize?.toSize() ?? const Size(1080, 1920),
+        );
+        updatedThumbnails[project.id] = bytes;
+        updatedProjects.add(
+          project.copyWith(
+            thumbnailData: base64Encode(bytes),
+          ),
+        );
       } catch (_) {
-        // 忽略单个缩略图失败，继续其他
+        // ignore failures per item
       }
     }
-    if (mounted) {
-      setState(() {
-        _thumbnails = updated;
-        _generatingThumbs = false;
-      });
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _thumbnails = updatedThumbnails;
+      _generatingThumbs = false;
+      if (updatedProjects.isNotEmpty) {
+        final updates = {
+          for (final project in updatedProjects) project.id: project,
+        };
+        _projects = _projects.map((item) => updates[item.id] ?? item).toList();
+      }
+    });
+    if (updatedProjects.isNotEmpty) {
+      await _projectRepository.saveProjects(_projects.reversed.toList());
     }
   }
 
@@ -186,12 +219,11 @@ class _GalleryScreenState extends State<GalleryScreen> {
     if (profile == null) {
       return null;
     }
-    final canvasSize = project.canvasSize?.toSize() ?? const Size(1080, 1920);
     try {
       return await _renderer.renderToBytes(
         profile: profile,
         context: _contextController.context,
-        canvasSize: canvasSize,
+        canvasSize: project.canvasSize?.toSize() ?? const Size(1080, 1920),
       );
     } catch (_) {
       return null;
@@ -386,6 +418,39 @@ class _ProjectDetailScreenState extends State<_ProjectDetailScreen> {
                                   .bodySmall
                                   ?.copyWith(color: Colors.white70),
                             ),
+                            const Spacer(),
+                            Align(
+                              alignment: Alignment.bottomRight,
+                              child: Wrap(
+                                spacing: 12,
+                                children: [
+                                  TextButton.icon(
+                                    onPressed: () =>
+                                        _openProfileEditor(profile),
+                                    icon: const Icon(Icons.edit_outlined,
+                                        size: 16),
+                                    label: const Text('编辑'),
+                                    style: TextButton.styleFrom(
+                                      foregroundColor: isActive
+                                          ? Colors.orange
+                                          : Colors.white70,
+                                    ),
+                                  ),
+                                  if (!isActive)
+                                    TextButton.icon(
+                                      onPressed: () =>
+                                          _onProfileSelected(profile),
+                                      icon: const Icon(
+                                          Icons.visibility_outlined,
+                                          size: 16),
+                                      label: const Text('预览'),
+                                      style: TextButton.styleFrom(
+                                        foregroundColor: Colors.white70,
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ),
                           ],
                         ),
                       ),
@@ -440,6 +505,27 @@ class _ProjectDetailScreenState extends State<_ProjectDetailScreen> {
       _activeProfile = profile;
     });
     await _generatePreview();
+  }
+
+  Future<void> _openProfileEditor(WatermarkProfile profile) async {
+    final updated = await Navigator.of(context).pushNamed<WatermarkProfile>(
+      WatermarkProfileEditorScreen.routeName,
+      arguments: WatermarkProfileEditorArguments(
+        profile: profile,
+        bootstrapper: widget.bootstrapper,
+      ),
+    );
+    if (updated == null) {
+      return;
+    }
+    widget.profiles[updated.id] = updated;
+    await widget.onProjectUpdated(_project.copyWith(profileId: updated.id));
+    if (mounted) {
+      setState(() {
+        _activeProfile = updated;
+      });
+      await _generatePreview();
+    }
   }
 
   Future<void> _generatePreview() async {
@@ -529,6 +615,24 @@ class _ProjectDetailScreenState extends State<_ProjectDetailScreen> {
       case _ExportOption.photoWithWatermark:
         await _exportWithWatermark();
         break;
+    }
+  }
+
+  void _openProfileEditor(WatermarkProfile profile) async {
+    final updated = await Navigator.of(context).push<WatermarkProfile>(
+      MaterialPageRoute(
+        builder: (_) => WatermarkProfileEditorScreen(
+          arguments: WatermarkProfileEditorArguments(
+            profile: profile,
+            bootstrapper: widget.contextController.bootstrapper,
+          ),
+        ),
+      ),
+    );
+    if (updated != null && mounted) {
+      widget.onProjectUpdated(
+        _project.copyWith(profileId: updated.id),
+      );
     }
   }
 
