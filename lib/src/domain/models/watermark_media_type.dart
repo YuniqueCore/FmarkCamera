@@ -1,0 +1,1 @@
+enum WatermarkMediaType { photo, video }
