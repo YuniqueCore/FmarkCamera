@@ -1,4 +1,5 @@
 import 'package:fmark_camera/src/domain/models/watermark_media_type.dart';
+import 'package:fmark_camera/src/domain/models/watermark_profile.dart';
 
 class WatermarkProject {
   const WatermarkProject({
@@ -7,6 +8,8 @@ class WatermarkProject {
     required this.mediaType,
     required this.capturedAt,
     required this.profileId,
+    this.canvasSize,
+    this.previewRatio,
     this.overlayPath,
     this.thumbnailPath,
   });
@@ -16,6 +19,8 @@ class WatermarkProject {
   final WatermarkMediaType mediaType;
   final DateTime capturedAt;
   final String profileId;
+  final WatermarkCanvasSize? canvasSize;
+  final double? previewRatio;
   final String? overlayPath;
   final String? thumbnailPath;
 
@@ -24,6 +29,8 @@ class WatermarkProject {
     WatermarkMediaType? mediaType,
     DateTime? capturedAt,
     String? profileId,
+    WatermarkCanvasSize? canvasSize,
+    double? previewRatio,
     String? overlayPath,
     String? thumbnailPath,
   }) {
@@ -33,6 +40,8 @@ class WatermarkProject {
       mediaType: mediaType ?? this.mediaType,
       capturedAt: capturedAt ?? this.capturedAt,
       profileId: profileId ?? this.profileId,
+      canvasSize: canvasSize ?? this.canvasSize,
+      previewRatio: previewRatio ?? this.previewRatio,
       overlayPath: overlayPath ?? this.overlayPath,
       thumbnailPath: thumbnailPath ?? this.thumbnailPath,
     );
@@ -44,6 +53,8 @@ class WatermarkProject {
         'mediaType': mediaType.name,
         'capturedAt': capturedAt.toIso8601String(),
         'profileId': profileId,
+        'canvasSize': canvasSize?.toJson(),
+        'previewRatio': previewRatio,
         'overlayPath': overlayPath,
         'thumbnailPath': thumbnailPath,
       };
@@ -62,6 +73,12 @@ class WatermarkProject {
       capturedAt: DateTime.tryParse(json['capturedAt'] as String? ?? '') ??
           DateTime.now(),
       profileId: json['profileId'] as String? ?? '',
+      canvasSize: json['canvasSize'] == null
+          ? null
+          : WatermarkCanvasSize.fromJson(
+              json['canvasSize'] as Map<String, dynamic>,
+            ),
+      previewRatio: (json['previewRatio'] as num?)?.toDouble(),
       overlayPath: json['overlayPath'] as String?,
       thumbnailPath: json['thumbnailPath'] as String?,
     );

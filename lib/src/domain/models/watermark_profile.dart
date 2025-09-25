@@ -1,3 +1,5 @@
+import 'package:flutter/widgets.dart';
+
 import 'package:fmark_camera/src/domain/models/watermark_element.dart';
 
 typedef WatermarkElementList = List<WatermarkElement>;
@@ -8,6 +10,7 @@ class WatermarkProfile {
     required this.name,
     required this.elements,
     this.isDefault = false,
+    this.canvasSize,
     this.updatedAt,
   });
 
@@ -15,12 +18,14 @@ class WatermarkProfile {
   final String name;
   final WatermarkElementList elements;
   final bool isDefault;
+  final WatermarkCanvasSize? canvasSize;
   final DateTime? updatedAt;
 
   WatermarkProfile copyWith({
     String? name,
     WatermarkElementList? elements,
     bool? isDefault,
+    WatermarkCanvasSize? canvasSize,
     DateTime? updatedAt,
   }) {
     return WatermarkProfile(
@@ -28,6 +33,7 @@ class WatermarkProfile {
       name: name ?? this.name,
       elements: elements ?? this.elements,
       isDefault: isDefault ?? this.isDefault,
+      canvasSize: canvasSize ?? this.canvasSize,
       updatedAt: updatedAt ?? this.updatedAt,
     );
   }
@@ -37,6 +43,7 @@ class WatermarkProfile {
         'name': name,
         'elements': elements.map((element) => element.toJson()).toList(),
         'isDefault': isDefault,
+        'canvasSize': canvasSize?.toJson(),
         'updatedAt': updatedAt?.toIso8601String(),
       };
 
@@ -51,9 +58,54 @@ class WatermarkProfile {
               ))
           .toList(),
       isDefault: json['isDefault'] as bool? ?? false,
+      canvasSize: json['canvasSize'] == null
+          ? null
+          : WatermarkCanvasSize.fromJson(
+              json['canvasSize'] as Map<String, dynamic>,
+            ),
       updatedAt: json['updatedAt'] == null
           ? null
           : DateTime.tryParse(json['updatedAt'] as String),
     );
   }
+}
+
+class WatermarkCanvasSize {
+  const WatermarkCanvasSize({
+    required this.width,
+    required this.height,
+    this.pixelRatio = 1,
+  });
+
+  final double width;
+  final double height;
+  final double pixelRatio;
+
+  factory WatermarkCanvasSize.fromJson(Map<String, dynamic> json) {
+    return WatermarkCanvasSize(
+      width: (json['width'] as num?)?.toDouble() ?? 0,
+      height: (json['height'] as num?)?.toDouble() ?? 0,
+      pixelRatio: (json['pixelRatio'] as num?)?.toDouble() ?? 1,
+    );
+  }
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'width': width,
+        'height': height,
+        'pixelRatio': pixelRatio,
+      };
+
+  WatermarkCanvasSize copyWith({
+    double? width,
+    double? height,
+    double? pixelRatio,
+  }) {
+    return WatermarkCanvasSize(
+      width: width ?? this.width,
+      height: height ?? this.height,
+      pixelRatio: pixelRatio ?? this.pixelRatio,
+    );
+  }
+
+  Size toSize() => Size(width, height);
 }
