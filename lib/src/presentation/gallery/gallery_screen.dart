@@ -84,10 +84,13 @@ class _GalleryScreenState extends State<GalleryScreen> {
                           child: WatermarkCanvasView(
                             elements: profile.elements,
                             contextData: _contextController.context,
-                            canvasSize: project.canvasSize ??
+                            canvasSize:
+                                project.canvasSize ??
                                 profile.canvasSize ??
                                 const WatermarkCanvasSize(
-                                    width: 1080, height: 1920),
+                                  width: 1080,
+                                  height: 1920,
+                                ),
                           ),
                         ),
                         Positioned(
@@ -114,8 +117,9 @@ class _GalleryScreenState extends State<GalleryScreen> {
                                   ),
                                 ),
                                 Text(
-                                  DateFormat('yyyy-MM-dd HH:mm')
-                                      .format(project.capturedAt),
+                                  DateFormat(
+                                    'yyyy-MM-dd HH:mm',
+                                  ).format(project.capturedAt),
                                   style: const TextStyle(
                                     color: Colors.white70,
                                     fontSize: 12,
@@ -238,7 +242,8 @@ class _CaptureDetailPageState extends State<_CaptureDetailPage> {
                   child: WatermarkCanvasView(
                     elements: _profile.elements,
                     contextData: _contextController.context,
-                    canvasSize: _project.canvasSize ??
+                    canvasSize:
+                        _project.canvasSize ??
                         _profile.canvasSize ??
                         const WatermarkCanvasSize(width: 1080, height: 1920),
                   ),
@@ -259,8 +264,9 @@ class _CaptureDetailPageState extends State<_CaptureDetailPage> {
                 final selected = profile.id == _profile.id;
                 return ElevatedButton(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor:
-                        selected ? Colors.orangeAccent : Colors.white12,
+                    backgroundColor: selected
+                        ? Colors.orangeAccent
+                        : Colors.white12,
                   ),
                   onPressed: () => setState(() => _profile = profile),
                   child: Text(profile.name),
@@ -383,18 +389,20 @@ class _CaptureDetailPageState extends State<_CaptureDetailPage> {
       return;
     }
     if (path == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('当前平台不可直接导出原始文件')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('当前平台不可直接导出原始文件')));
     } else {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('原始文件已导出：$path')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('原始文件已导出：$path')));
     }
   }
 
   Future<void> _exportWatermarkOnly() async {
     setState(() => _exporting = true);
-    final canvasSize = _project.canvasSize ??
+    final canvasSize =
+        _project.canvasSize ??
         _profile.canvasSize ??
         const WatermarkCanvasSize(width: 1080, height: 1920);
     final bytes = await _renderer.renderToBytes(
@@ -411,18 +419,20 @@ class _CaptureDetailPageState extends State<_CaptureDetailPage> {
       return;
     }
     if (path == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('当前平台不可直接保存 PNG')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('当前平台不可直接保存 PNG')));
     } else {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('水印 PNG 已导出：$path')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('水印 PNG 已导出：$path')));
     }
   }
 
   Future<void> _exportWithWatermark() async {
     setState(() => _exporting = true);
-    final canvasSize = _project.canvasSize ??
+    final canvasSize =
+        _project.canvasSize ??
         _profile.canvasSize ??
         const WatermarkCanvasSize(width: 1080, height: 1920);
     final overlayBytes = await _renderer.renderToBytes(
@@ -436,31 +446,24 @@ class _CaptureDetailPageState extends State<_CaptureDetailPage> {
     }
     overlayPath ??= _project.overlayPath;
     String? resultPath;
-    if (overlayPath != null) {
-      if (_project.mediaType == WatermarkMediaType.photo) {
-        resultPath = await _exporter.composePhoto(
-          photoPath: _project.mediaPath,
-          overlayPath: overlayPath,
-        );
-      } else {
-        resultPath = await _exporter.composeVideo(
-          videoPath: _project.mediaPath,
-          overlayPath: overlayPath,
-        );
-      }
+    if (_project.mediaType == WatermarkMediaType.photo) {
+      resultPath = await _exporter.composePhoto(
+        photoPath: _project.mediaPath,
+        overlayPath: overlayPath,
+      );
+    } else {
+      resultPath = await _exporter.composeVideo(
+        videoPath: _project.mediaPath,
+        overlayPath: overlayPath,
+      );
     }
     setState(() => _exporting = false);
     if (!mounted) {
       return;
     }
-    if (resultPath == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('当前平台暂不支持合成，尝试导出水印 PNG')),
-      );
-    } else {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('导出成功：$resultPath')));
-    }
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('导出成功：$resultPath')));
   }
 }
 
