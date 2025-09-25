@@ -44,6 +44,7 @@ class _FmarkCameraAppState extends State<FmarkCameraApp> {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepOrange),
         useMaterial3: true,
       ),
+      home: CameraScreen(bootstrapper: _bootstrapper),
       routes: {
         CameraScreen.routeName: (_) =>
             CameraScreen(bootstrapper: _bootstrapper),
@@ -54,7 +55,6 @@ class _FmarkCameraAppState extends State<FmarkCameraApp> {
         SettingsScreen.routeName: (_) =>
             SettingsScreen(bootstrapper: _bootstrapper),
       },
-      initialRoute: CameraScreen.routeName,
     );
   }
 }

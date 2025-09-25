@@ -158,7 +158,7 @@ class _CameraScreenState extends State<CameraScreen>
         ],
       ),
       body: !_isInitialized || controller == null
-          ? const Center(child: CircularProgressIndicator())
+          ? _buildCameraUnavailable()
           : AnimatedBuilder(
               animation: _contextController,
               builder: (context, _) {
@@ -191,6 +191,32 @@ class _CameraScreenState extends State<CameraScreen>
                 );
               },
             ),
+    );
+  }
+
+  Widget _buildCameraUnavailable() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const CircularProgressIndicator(),
+            const SizedBox(height: 16),
+            const Text(
+              '正在初始化相机或无法访问相机。\n在 Web 上可能不支持或被浏览器拦截。',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.white70),
+            ),
+            const SizedBox(height: 12),
+            ElevatedButton.icon(
+              onPressed: _initializeCamera,
+              icon: const Icon(Icons.refresh),
+              label: const Text('重试'),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
