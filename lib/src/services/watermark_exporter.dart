@@ -12,4 +12,11 @@ abstract class WatermarkExporter {
   });
 
   Future<String?> saveOverlayBytes(List<int> bytes);
+
+  Future<String?> exportOriginal(String sourcePath);
+
+  Future<String?> exportWatermarkPng(
+    List<int> bytes, {
+    String? suggestedName,
+  });
 }

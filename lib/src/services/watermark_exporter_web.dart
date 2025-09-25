@@ -44,7 +44,34 @@ class WebWatermarkExporter implements WatermarkExporter {
     anchor.remove();
     return null;
   }
+
+  @override
+  Future<String?> exportOriginal(String sourcePath) async {
+    // Web 平台直接提示用户下载原始文件由调用方处理。
+    return null;
+  }
+
+  @override
+  Future<String?> exportWatermarkPng(
+    List<int> bytes, {
+    String? suggestedName,
+  }) async {
+    if (!kIsWeb) {
+      return null;
+    }
+    final fileName = suggestedName == null || suggestedName.isEmpty
+        ? 'watermark_${const Uuid().v4()}.png'
+        : suggestedName;
+    final dataUrl = 'data:image/png;base64,${base64Encode(bytes)}';
+    final anchor = web.HTMLAnchorElement()
+      ..href = dataUrl
+      ..download = fileName
+      ..style.display = 'none';
+    web.document.body?.append(anchor);
+    anchor.click();
+    anchor.remove();
+    return null;
+  }
 }
 
 WatermarkExporter createWatermarkExporter() => const WebWatermarkExporter();
-

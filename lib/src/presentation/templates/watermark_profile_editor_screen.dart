@@ -129,7 +129,7 @@ class _WatermarkProfileEditorScreenState
   }
 
   Widget _buildToolbar() {
-    const watermarkElement = WatermarkElement(
+    const defaultElement = WatermarkElement(
       id: '',
       type: WatermarkElementType.text,
       transform: WatermarkTransform(
@@ -138,26 +138,52 @@ class _WatermarkProfileEditorScreenState
         rotation: 0,
       ),
     );
-
     final selected = _profile.elements.firstWhere(
       (element) => element.id == _selectedElementId,
-      orElse: () => watermarkElement,
+      orElse: () => defaultElement,
     );
     final hasSelection = selected.id.isNotEmpty;
     return SafeArea(
       top: false,
-      child: ToolbarContainer(
-        hasSelection: hasSelection,
-        addButtons: [
-          _buildAddButton('时间', Icons.access_time, _addTimeElement),
-          _buildAddButton('地点', Icons.place_outlined, _addLocationElement),
-          _buildAddButton('天气', Icons.wb_sunny_outlined, _addWeatherElement),
-          _buildAddButton('文本', Icons.text_fields, _addTextElement),
-          _buildAddButton('图片', Icons.image_outlined, _addImageElement),
-        ],
-        onReset: hasSelection ? () => _resetElement(selected) : null,
-        onOpenLayer: hasSelection ? () => _openLayerDialog(selected) : null,
-        inspector: hasSelection ? _buildElementInspector(selected) : null,
+      child: Container(
+        color: Colors.black.withValues(alpha: 0.85),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      _buildAddButton('时间', Icons.access_time, _addTimeElement),
+                      _buildAddButton('地点', Icons.place_outlined, _addLocationElement),
+                      _buildAddButton('天气', Icons.wb_sunny_outlined, _addWeatherElement),
+                      _buildAddButton('文本', Icons.text_fields, _addTextElement),
+                      _buildAddButton('图片', Icons.image_outlined, _addImageElement),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.refresh_outlined),
+                  tooltip: '重置选中元素',
+                  onPressed: hasSelection ? () => _resetElement(selected) : null,
+                ),
+                IconButton(
+                  icon: const Icon(Icons.layers),
+                  tooltip: '层级调整',
+                  onPressed: hasSelection ? () => _openLayerDialog(selected) : null,
+                ),
+              ],
+            ),
+            if (hasSelection) ...[
+              const SizedBox(height: 12),
+              _buildElementInspector(selected),
+            ],
+          ],
+        ),
       ),
     );
   }
@@ -623,57 +649,3 @@ class _GridPainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
-class ToolbarContainer extends StatelessWidget {
-  const ToolbarContainer({
-    super.key,
-    required this.hasSelection,
-    required this.addButtons,
-    required this.onReset,
-    required this.onOpenLayer,
-    required this.inspector,
-  });
-
-  final bool hasSelection;
-  final List<Widget> addButtons;
-  final VoidCallback? onReset;
-  final VoidCallback? onOpenLayer;
-  final Widget? inspector;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      color: Colors.black.withValues(alpha: 0.85),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: addButtons,
-                ),
-              ),
-              IconButton(
-                icon: const Icon(Icons.refresh_outlined),
-                tooltip: '重置选中元素',
-                onPressed: onReset,
-              ),
-              IconButton(
-                icon: const Icon(Icons.layers),
-                tooltip: '层级调整',
-                onPressed: onOpenLayer,
-              ),
-            ],
-          ),
-          if (inspector != null) ...[
-            const SizedBox(height: 12),
-            inspector!,
-          ],
-        ],
-      ),
-    );
-  }
-}
