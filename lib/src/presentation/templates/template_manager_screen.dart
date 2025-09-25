@@ -72,11 +72,12 @@ class _TemplateManagerScreenState extends State<TemplateManagerScreen> {
           IconButton(
             icon: const Icon(Icons.save_outlined),
             onPressed: () async {
+              final navigator = Navigator.of(context);
               await _repository.saveProfiles(_profiles);
               if (!mounted) {
                 return;
               }
-              Navigator.of(context).pop(
+              navigator.pop(
                 _profiles.firstWhere(
                   (profile) => profile.id == _activeProfileId,
                 ),
