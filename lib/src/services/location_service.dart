@@ -5,22 +5,32 @@ import 'package:fmark_camera/src/domain/models/location_snapshot.dart';
 
 class LocationService {
   Future<LocationSnapshot?> resolveCurrentLocation() async {
-    final permission = await _ensurePermission();
-    if (!permission) {
+    try {
+      final permission = await _ensurePermission();
+      if (!permission) {
+        return null;
+      }
+      final position = await Geolocator.getCurrentPosition();
+      Placemark? first;
+      try {
+        final placemarks = await placemarkFromCoordinates(
+          position.latitude,
+          position.longitude,
+        );
+        first = placemarks.isNotEmpty ? placemarks.first : null;
+      } catch (_) {
+        // Reverse geocoding may be unavailable on web or fail; proceed without address
+        first = null;
+      }
+      return LocationSnapshot(
+        latitude: position.latitude,
+        longitude: position.longitude,
+        address: _formatAddress(first),
+        city: first?.locality ?? first?.subAdministrativeArea,
+      );
+    } catch (_) {
       return null;
     }
-    final position = await Geolocator.getCurrentPosition();
-    final placemarks = await placemarkFromCoordinates(
-      position.latitude,
-      position.longitude,
-    );
-    final first = placemarks.isNotEmpty ? placemarks.first : null;
-    return LocationSnapshot(
-      latitude: position.latitude,
-      longitude: position.longitude,
-      address: _formatAddress(first),
-      city: first?.locality ?? first?.subAdministrativeArea,
-    );
   }
 
   Future<bool> _ensurePermission() async {
