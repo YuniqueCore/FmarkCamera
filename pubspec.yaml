@@ -19,7 +19,11 @@ dependencies:
   intl: ^0.20.2
   image_picker: ^1.0.7
   path_provider: ^2.1.2
-  # ffmpeg_kit_flutter_min_gpl: ^6.0.1
+  ffmpeg_wasm: ^1.0.3
+  ffmpeg_kit_flutter_full_gpl: ^6.0.3
+  gal: ^2.3.2
+  flutter_file_dialog: ^3.0.2
+  gallery_saver_plus: ^3.2.9
 
   uuid: ^4.4.0
   collection: ^1.18.0

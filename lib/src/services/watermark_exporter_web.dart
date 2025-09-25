@@ -1,31 +1,41 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:web/web.dart' as web;
 
 import 'package:uuid/uuid.dart';
 
+import 'package:fmark_camera/src/domain/models/watermark_media_type.dart';
 import 'package:fmark_camera/src/services/watermark_exporter.dart';
 
 class WebWatermarkExporter implements WatermarkExporter {
   const WebWatermarkExporter();
 
   @override
-  Future<String?> composePhoto({
-    required String photoPath,
-    required String overlayPath,
+  Future<WatermarkExportResult> composePhoto({
+    required WatermarkMediaInput photo,
+    required WatermarkMediaInput overlay,
+    WatermarkExportOptions options = const WatermarkExportOptions(),
   }) async {
-    // FFmpeg is unavailable on Web; return null to signal unsupported feature.
-    return null;
+    return WatermarkExportResult(
+      destination: options.destination,
+      success: false,
+      userMessage: 'Web 平台水印合成仍在建设中，暂需在离线端完成导出',
+    );
   }
 
   @override
-  Future<String?> composeVideo({
-    required String videoPath,
-    required String overlayPath,
+  Future<WatermarkExportResult> composeVideo({
+    required WatermarkMediaInput video,
+    required WatermarkMediaInput overlay,
+    WatermarkExportOptions options = const WatermarkExportOptions(),
   }) async {
-    // Video composition is not supported on Web.
-    return null;
+    return WatermarkExportResult(
+      destination: options.destination,
+      success: false,
+      userMessage: 'Web 平台视频导出暂未实现，请在移动端导出',
+    );
   }
 
   @override
@@ -46,20 +56,43 @@ class WebWatermarkExporter implements WatermarkExporter {
   }
 
   @override
-  Future<String?> exportOriginal(String sourcePath) async {
-    // Web 平台直接提示用户下载原始文件由调用方处理。
-    return null;
+  Future<WatermarkExportResult> exportOriginal(
+    WatermarkMediaInput source, {
+    required WatermarkMediaType mediaType,
+    WatermarkExportOptions options = const WatermarkExportOptions(
+      destination: WatermarkExportDestination.browserDownload,
+    ),
+  }) async {
+    return WatermarkExportResult(
+      destination: options.destination,
+      success: false,
+      userMessage: 'Web 平台暂不支持直接导出原始文件',
+    );
   }
 
   @override
-  Future<String?> exportWatermarkPng(
-    List<int> bytes, {
+  Future<WatermarkExportResult> exportWatermarkPng(
+    WatermarkMediaInput overlay, {
     String? suggestedName,
+    WatermarkExportOptions options = const WatermarkExportOptions(
+      destination: WatermarkExportDestination.browserDownload,
+    ),
   }) async {
     if (!kIsWeb) {
-      return null;
+      return WatermarkExportResult(
+        destination: options.destination,
+        success: false,
+      );
     }
-    final fileName = suggestedName == null || suggestedName.isEmpty
+    final bytes = overlay.bytes;
+    if (bytes == null || bytes.isEmpty) {
+      return WatermarkExportResult(
+        destination: options.destination,
+        success: false,
+        userMessage: '未获取到水印 PNG 数据',
+      );
+    }
+    final fileName = (suggestedName == null || suggestedName.isEmpty)
         ? 'watermark_${const Uuid().v4()}.png'
         : suggestedName;
     final dataUrl = 'data:image/png;base64,${base64Encode(bytes)}';
@@ -70,7 +103,11 @@ class WebWatermarkExporter implements WatermarkExporter {
     web.document.body?.append(anchor);
     anchor.click();
     anchor.remove();
-    return null;
+    return WatermarkExportResult(
+      destination: WatermarkExportDestination.browserDownload,
+      success: true,
+      userMessage: '已触发浏览器下载：$fileName',
+    );
   }
 }
 

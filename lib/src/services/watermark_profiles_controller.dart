@@ -69,23 +69,41 @@ class WatermarkProfilesController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> ensureCanvasSize(WatermarkCanvasSize canvasSize) async {
+  Future<void> ensureCanvasSize(
+    WatermarkCanvasSize canvasSize, {
+    bool force = false,
+    double tolerance = 0.01,
+  }) async {
     bool changed = false;
     _profiles = _profiles.map((profile) {
-      if (profile.canvasSize == null) {
-        changed = true;
-        return profile.copyWith(
-          canvasSize: canvasSize,
-          updatedAt: DateTime.now(),
-        );
+      final current = profile.canvasSize;
+      final shouldUpdate = current == null ||
+          force ||
+          !_isCanvasApproxEqual(current, canvasSize, tolerance: tolerance);
+      if (!shouldUpdate) {
+        return profile;
       }
-      return profile;
+      changed = true;
+      return profile.copyWith(
+        canvasSize: canvasSize,
+        updatedAt: DateTime.now(),
+      );
     }).toList();
     if (changed) {
       await _persist();
     } else {
       notifyListeners();
     }
+  }
+
+  bool _isCanvasApproxEqual(
+    WatermarkCanvasSize a,
+    WatermarkCanvasSize b, {
+    double tolerance = 0.01,
+  }) {
+    double scale(double value) => value.abs().clamp(1, double.infinity);
+    bool close(double x, double y) => (x - y).abs() <= tolerance * scale(y);
+    return close(a.width, b.width) && close(a.height, b.height);
   }
 
   Future<WatermarkProfile> createProfile({

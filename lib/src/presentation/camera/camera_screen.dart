@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -40,6 +42,7 @@ class _CameraScreenState extends State<CameraScreen>
   bool _isInitialized = false;
   bool _isRecording = false;
   bool _isVideoMode = false;
+  Size? _lastSyncedCanvasSize;
 
   late final WatermarkProfilesController _profilesController;
   late final WatermarkProjectsController _projectsController;
@@ -82,14 +85,13 @@ class _CameraScreenState extends State<CameraScreen>
     );
     await controller.initialize();
     await _profilesController.ensureCanvasSize(
-      WatermarkCanvasSize(
-        width: controller.value.previewSize?.width ?? 1080,
-        height: controller.value.previewSize?.height ?? 1920,
-      ),
+      _canvasSizeFromPreview(controller.value.previewSize),
+      force: true,
     );
     setState(() {
       _cameraController = controller;
       _isInitialized = true;
+      _lastSyncedCanvasSize = null;
     });
   }
 
@@ -170,29 +172,26 @@ class _CameraScreenState extends State<CameraScreen>
           body: Column(
             children: [
               Expanded(
-                child: Stack(
-                  children: [
-                    Center(
-                      child: AspectRatio(
-                        aspectRatio: controller.value.aspectRatio,
-                        child: CameraPreview(controller),
-                      ),
-                    ),
-                    if (activeProfile != null)
-                      Positioned.fill(
-                        child: WatermarkCanvasView(
-                          elements: activeProfile.elements,
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    _syncCanvasSizeIfNeeded(context, controller);
+                    return Stack(
+                      children: [
+                        _buildPreviewLayer(
+                          context: context,
+                          constraints: constraints,
+                          controller: controller,
+                          activeProfile: activeProfile,
                           contextData: contextData,
-                          canvasSize:
-                              activeProfile.canvasSize ?? _fallbackCanvasSize(),
                         ),
-                      ),
-                    Positioned(
-                      left: 16,
-                      top: 16,
-                      child: _ContextBadge(contextData: contextData),
-                    ),
-                  ],
+                        Positioned(
+                          left: 16,
+                          top: 16,
+                          child: _ContextBadge(contextData: contextData),
+                        ),
+                      ],
+                    );
+                  },
                 ),
               ),
               _buildBottomBar(activeProfile),
@@ -205,6 +204,153 @@ class _CameraScreenState extends State<CameraScreen>
 
   WatermarkCanvasSize _fallbackCanvasSize() =>
       const WatermarkCanvasSize(width: 1080, height: 1920);
+
+  WatermarkCanvasSize _canvasSizeFromPreview(Size? previewSize) {
+    final size = previewSize ?? _fallbackCanvasSize().toSize();
+    final views = WidgetsBinding.instance.platformDispatcher.views;
+    final devicePixelRatio = views.isNotEmpty
+        ? views.first.devicePixelRatio
+        : (WidgetsBinding
+                .instance.platformDispatcher.implicitView?.devicePixelRatio ??
+            1);
+    return WatermarkCanvasSize(
+      width: size.width,
+      height: size.height,
+      pixelRatio: devicePixelRatio,
+    );
+  }
+
+  Widget _buildPreviewLayer({
+    required BuildContext context,
+    required BoxConstraints constraints,
+    required CameraController controller,
+    required WatermarkProfile? activeProfile,
+    required WatermarkContext contextData,
+  }) {
+    final mediaQuery = MediaQuery.of(context);
+    final orientation = mediaQuery.orientation;
+    final previewSize = _effectivePreviewSize(
+      controller.value.previewSize,
+      orientation,
+    );
+    final aspectRatio = previewSize.width / previewSize.height;
+    final maxWidth = constraints.maxWidth.isFinite
+        ? constraints.maxWidth
+        : previewSize.width;
+    final maxHeight = constraints.maxHeight.isFinite
+        ? constraints.maxHeight
+        : previewSize.height;
+    double width = maxWidth;
+    double height = width / aspectRatio;
+    if (height > maxHeight) {
+      height = maxHeight;
+      width = height * aspectRatio;
+    }
+    final pixelRatio = mediaQuery.devicePixelRatio;
+    final canvasSize = _resolveCanvasSize(
+      activeProfile,
+      previewSize,
+      pixelRatio,
+    );
+    return Center(
+      child: SizedBox(
+        width: width,
+        height: height,
+        child: ClipRect(
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              CameraPreview(controller),
+              if (activeProfile != null)
+                Positioned.fill(
+                  child: WatermarkCanvasView(
+                    elements: activeProfile.elements,
+                    contextData: contextData,
+                    canvasSize: canvasSize,
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _syncCanvasSizeIfNeeded(
+    BuildContext context,
+    CameraController controller,
+  ) {
+    final preview = controller.value.previewSize;
+    if (preview == null || !mounted) {
+      return;
+    }
+    final orientation = MediaQuery.of(context).orientation;
+    final effective = _effectivePreviewSize(preview, orientation);
+    if (_lastSyncedCanvasSize != null) {
+      final last = _lastSyncedCanvasSize!;
+      if ((last.width - effective.width).abs() < 0.5 &&
+          (last.height - effective.height).abs() < 0.5) {
+        return;
+      }
+    }
+    _lastSyncedCanvasSize = effective;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      _profilesController.ensureCanvasSize(
+        WatermarkCanvasSize(
+          width: effective.width,
+          height: effective.height,
+          pixelRatio: MediaQuery.of(context).devicePixelRatio,
+        ),
+        force: true,
+        tolerance: 0.02,
+      );
+    });
+  }
+
+  Size _effectivePreviewSize(Size? previewSize, Orientation orientation) {
+    final fallback = _fallbackCanvasSize().toSize();
+    if (previewSize == null ||
+        previewSize.width <= 0 ||
+        previewSize.height <= 0) {
+      return fallback;
+    }
+    final isLandscapePreview = previewSize.width >= previewSize.height;
+    if (orientation == Orientation.portrait && isLandscapePreview) {
+      return Size(previewSize.height, previewSize.width);
+    }
+    if (orientation == Orientation.landscape && !isLandscapePreview) {
+      return Size(previewSize.height, previewSize.width);
+    }
+    return previewSize;
+  }
+
+  WatermarkCanvasSize _resolveCanvasSize(
+    WatermarkProfile? profile,
+    Size fallback,
+    double pixelRatio,
+  ) {
+    final candidate = profile?.canvasSize;
+    if (candidate == null || candidate.width <= 0 || candidate.height <= 0) {
+      return WatermarkCanvasSize(
+        width: fallback.width,
+        height: fallback.height,
+        pixelRatio: pixelRatio,
+      );
+    }
+    final candidateAspect = candidate.width / candidate.height;
+    final fallbackAspect = fallback.width / fallback.height;
+    if ((candidateAspect - fallbackAspect).abs() > 0.02) {
+      return WatermarkCanvasSize(
+        width: fallback.width,
+        height: fallback.height,
+        pixelRatio: pixelRatio,
+      );
+    }
+    return candidate.copyWith(pixelRatio: pixelRatio);
+  }
 
   Widget _buildBottomBar(WatermarkProfile? activeProfile) {
     final controller = _cameraController;
@@ -337,13 +483,12 @@ class _CameraScreenState extends State<CameraScreen>
     await newController.initialize();
     await controller.dispose();
     await _profilesController.ensureCanvasSize(
-      WatermarkCanvasSize(
-        width: newController.value.previewSize?.width ?? 1080,
-        height: newController.value.previewSize?.height ?? 1920,
-      ),
+      _canvasSizeFromPreview(newController.value.previewSize),
+      force: true,
     );
     setState(() {
       _cameraController = newController;
+      _lastSyncedCanvasSize = null;
     });
   }
 
@@ -354,12 +499,22 @@ class _CameraScreenState extends State<CameraScreen>
       return;
     }
     final file = await controller.takePicture();
+    String? mediaDataBase64;
+    if (kIsWeb) {
+      try {
+        final bytes = await file.readAsBytes();
+        mediaDataBase64 = base64Encode(bytes);
+      } catch (_) {
+        mediaDataBase64 = null;
+      }
+    }
     await _storeCapture(
       path: file.path,
       mediaType: WatermarkMediaType.photo,
       previewSize: controller.value.previewSize,
       aspectRatio: controller.value.aspectRatio,
       profile: profile,
+      mediaDataBase64: mediaDataBase64,
     );
     if (!mounted) {
       return;
@@ -392,6 +547,14 @@ class _CameraScreenState extends State<CameraScreen>
         const SnackBar(content: Text('视频已保存，可在图库中导出水印版本')),
       );
     } else {
+      if (!controller.value.isInitialized) {
+        return;
+      }
+      try {
+        await controller.prepareForVideoRecording();
+      } catch (_) {
+        // 某些平台无需显式 prepare
+      }
       await controller.startVideoRecording();
       setState(() => _isRecording = true);
     }
@@ -403,21 +566,32 @@ class _CameraScreenState extends State<CameraScreen>
     required Size? previewSize,
     required double aspectRatio,
     required WatermarkProfile profile,
+    String? mediaDataBase64,
+    String? thumbnailData,
   }) async {
     final contextData = _contextController.context;
-    final canvasSize = profile.canvasSize ?? _fallbackCanvasSize();
+    final canvasSize = profile.canvasSize ??
+        (previewSize == null
+            ? _fallbackCanvasSize()
+            : _canvasSizeFromPreview(previewSize));
     String? overlayPath;
+    String? overlayData;
+    String? resolvedThumbnail = thumbnailData;
     try {
       final bytes = await _renderer.renderToBytes(
         profile: profile,
         context: contextData,
         canvasSize: canvasSize.toSize(),
       );
-      if (!kIsWeb) {
+      if (kIsWeb) {
+        overlayData = base64Encode(bytes);
+        resolvedThumbnail ??= overlayData;
+      } else {
         overlayPath = await _exporter.saveOverlayBytes(bytes);
       }
     } catch (_) {
       overlayPath = null;
+      overlayData = null;
     }
 
     final project = WatermarkProject(
@@ -429,6 +603,9 @@ class _CameraScreenState extends State<CameraScreen>
       canvasSize: canvasSize,
       previewRatio: aspectRatio,
       overlayPath: overlayPath,
+      overlayData: overlayData,
+      thumbnailData: resolvedThumbnail,
+      mediaDataBase64: mediaDataBase64,
     );
     await _projectsController.addProject(project);
   }

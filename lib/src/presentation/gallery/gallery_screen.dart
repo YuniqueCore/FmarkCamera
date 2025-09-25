@@ -1,4 +1,6 @@
+import 'dart:convert';
 import 'dart:io' show File;
+import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -84,8 +86,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
                           child: WatermarkCanvasView(
                             elements: profile.elements,
                             contextData: _contextController.context,
-                            canvasSize:
-                                project.canvasSize ??
+                            canvasSize: project.canvasSize ??
                                 profile.canvasSize ??
                                 const WatermarkCanvasSize(
                                   width: 1080,
@@ -142,10 +143,20 @@ class _GalleryScreenState extends State<GalleryScreen> {
   }
 
   Widget _buildMediaPreview(WatermarkProject project) {
-    if (project.mediaType == WatermarkMediaType.photo && !kIsWeb) {
-      final file = File(project.mediaPath);
-      if (file.existsSync()) {
-        return Image.file(file, fit: BoxFit.cover);
+    if (project.mediaType == WatermarkMediaType.photo) {
+      if (kIsWeb) {
+        final base64 = project.mediaDataBase64 ?? project.thumbnailData;
+        if (base64 != null && base64.isNotEmpty) {
+          try {
+            final bytes = base64Decode(base64);
+            return Image.memory(bytes, fit: BoxFit.cover);
+          } catch (_) {}
+        }
+      } else {
+        final file = File(project.mediaPath);
+        if (file.existsSync()) {
+          return Image.file(file, fit: BoxFit.cover);
+        }
       }
     }
     return Container(
@@ -242,8 +253,7 @@ class _CaptureDetailPageState extends State<_CaptureDetailPage> {
                   child: WatermarkCanvasView(
                     elements: _profile.elements,
                     contextData: _contextController.context,
-                    canvasSize:
-                        _project.canvasSize ??
+                    canvasSize: _project.canvasSize ??
                         _profile.canvasSize ??
                         const WatermarkCanvasSize(width: 1080, height: 1920),
                   ),
@@ -264,9 +274,8 @@ class _CaptureDetailPageState extends State<_CaptureDetailPage> {
                 final selected = profile.id == _profile.id;
                 return ElevatedButton(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: selected
-                        ? Colors.orangeAccent
-                        : Colors.white12,
+                    backgroundColor:
+                        selected ? Colors.orangeAccent : Colors.white12,
                   ),
                   onPressed: () => setState(() => _profile = profile),
                   child: Text(profile.name),
@@ -305,10 +314,20 @@ class _CaptureDetailPageState extends State<_CaptureDetailPage> {
   }
 
   Widget _buildMediaPreview(WatermarkProject project) {
-    if (project.mediaType == WatermarkMediaType.photo && !kIsWeb) {
-      final file = File(project.mediaPath);
-      if (file.existsSync()) {
-        return Image.file(file, fit: BoxFit.cover);
+    if (project.mediaType == WatermarkMediaType.photo) {
+      if (kIsWeb) {
+        final base64 = project.mediaDataBase64 ?? project.thumbnailData;
+        if (base64 != null && base64.isNotEmpty) {
+          try {
+            final bytes = base64Decode(base64);
+            return Image.memory(bytes, fit: BoxFit.contain);
+          } catch (_) {}
+        }
+      } else {
+        final file = File(project.mediaPath);
+        if (file.existsSync()) {
+          return Image.file(file, fit: BoxFit.contain);
+        }
       }
     }
     return Container(
@@ -322,6 +341,42 @@ class _CaptureDetailPageState extends State<_CaptureDetailPage> {
         size: 64,
       ),
     );
+  }
+
+  WatermarkMediaInput? _mediaInputForProject(WatermarkProject project) {
+    if (!kIsWeb && project.mediaPath.isNotEmpty) {
+      return WatermarkMediaInput.fromPath(project.mediaPath);
+    }
+    final base64Data = project.mediaDataBase64;
+    if (base64Data != null && base64Data.isNotEmpty) {
+      try {
+        return WatermarkMediaInput.fromBytes(base64Decode(base64Data));
+      } catch (_) {}
+    }
+    if (project.mediaPath.isNotEmpty) {
+      return WatermarkMediaInput.fromPath(project.mediaPath);
+    }
+    return null;
+  }
+
+  WatermarkMediaInput? _overlayInput({
+    Uint8List? overlayBytes,
+    required WatermarkProject project,
+  }) {
+    if (overlayBytes != null && overlayBytes.isNotEmpty) {
+      return WatermarkMediaInput.fromBytes(overlayBytes);
+    }
+    final overlayData = project.overlayData;
+    if (overlayData != null && overlayData.isNotEmpty) {
+      try {
+        return WatermarkMediaInput.fromBytes(base64Decode(overlayData));
+      } catch (_) {}
+    }
+    final overlayPath = project.overlayPath;
+    if (overlayPath != null && overlayPath.isNotEmpty) {
+      return WatermarkMediaInput.fromPath(overlayPath);
+    }
+    return null;
   }
 
   Future<void> _exportMenu() async {
@@ -383,26 +438,25 @@ class _CaptureDetailPageState extends State<_CaptureDetailPage> {
 
   Future<void> _exportOriginal() async {
     setState(() => _exporting = true);
-    final path = await _exporter.exportOriginal(_project.mediaPath);
+    final result = await _exporter.exportOriginal(
+      _project.mediaPath,
+      mediaType: _project.mediaType,
+    );
     setState(() => _exporting = false);
     if (!mounted) {
       return;
     }
-    if (path == null) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('当前平台不可直接导出原始文件')));
-    } else {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('原始文件已导出：$path')));
-    }
+    final message = result.userMessage ??
+        (result.success
+            ? '原始文件已准备：${result.outputPath ?? '请手动查看'}'
+            : '当前平台不可直接导出原始文件');
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
   }
 
   Future<void> _exportWatermarkOnly() async {
     setState(() => _exporting = true);
-    final canvasSize =
-        _project.canvasSize ??
+    final canvasSize = _project.canvasSize ??
         _profile.canvasSize ??
         const WatermarkCanvasSize(width: 1080, height: 1920);
     final bytes = await _renderer.renderToBytes(
@@ -410,29 +464,28 @@ class _CaptureDetailPageState extends State<_CaptureDetailPage> {
       context: _contextController.context,
       canvasSize: canvasSize.toSize(),
     );
-    final path = await _exporter.exportWatermarkPng(
+    final result = await _exporter.exportWatermarkPng(
       bytes,
       suggestedName: '${_profile.name}.png',
+      options: const WatermarkExportOptions(
+        destination: WatermarkExportDestination.filePicker,
+      ),
     );
     setState(() => _exporting = false);
     if (!mounted) {
       return;
     }
-    if (path == null) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('当前平台不可直接保存 PNG')));
-    } else {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('水印 PNG 已导出：$path')));
-    }
+    final message = result.userMessage ??
+        (result.success
+            ? '水印 PNG 已导出：${result.outputPath ?? '已保存'}'
+            : '当前平台不可直接保存 PNG');
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
   }
 
   Future<void> _exportWithWatermark() async {
     setState(() => _exporting = true);
-    final canvasSize =
-        _project.canvasSize ??
+    final canvasSize = _project.canvasSize ??
         _profile.canvasSize ??
         const WatermarkCanvasSize(width: 1080, height: 1920);
     final overlayBytes = await _renderer.renderToBytes(
@@ -445,25 +498,44 @@ class _CaptureDetailPageState extends State<_CaptureDetailPage> {
       overlayPath = await _exporter.saveOverlayBytes(overlayBytes);
     }
     overlayPath ??= _project.overlayPath;
-    String? resultPath;
+    if (overlayPath == null) {
+      setState(() => _exporting = false);
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('未生成水印图层，无法导出')),
+      );
+      return;
+    }
+    final WatermarkExportResult result;
     if (_project.mediaType == WatermarkMediaType.photo) {
-      resultPath = await _exporter.composePhoto(
+      result = await _exporter.composePhoto(
         photoPath: _project.mediaPath,
         overlayPath: overlayPath,
+        options: WatermarkExportOptions(
+          destination: WatermarkExportDestination.filePicker,
+          suggestedFileName: '${_profile.name}_${_project.id}.jpg',
+        ),
       );
     } else {
-      resultPath = await _exporter.composeVideo(
+      result = await _exporter.composeVideo(
         videoPath: _project.mediaPath,
         overlayPath: overlayPath,
+        options: WatermarkExportOptions(
+          destination: WatermarkExportDestination.filePicker,
+          suggestedFileName: '${_profile.name}_${_project.id}.mp4',
+        ),
       );
     }
     setState(() => _exporting = false);
     if (!mounted) {
       return;
     }
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text('导出成功：$resultPath')));
+    final message = result.userMessage ??
+        (result.success ? '导出成功：${result.outputPath ?? '已保存'}' : '导出失败，请稍后重试');
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
   }
 }
 

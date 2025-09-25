@@ -11,9 +11,11 @@ class WatermarkProject {
     this.canvasSize,
     this.previewRatio,
     this.overlayPath,
+    this.overlayData,
     this.thumbnailPath,
     this.thumbnailData,
     this.thumbnailUpdatedAt,
+    this.mediaDataBase64,
   });
 
   final String id;
@@ -24,9 +26,11 @@ class WatermarkProject {
   final WatermarkCanvasSize? canvasSize;
   final double? previewRatio;
   final String? overlayPath;
+  final String? overlayData;
   final String? thumbnailPath;
   final String? thumbnailData;
   final DateTime? thumbnailUpdatedAt;
+  final String? mediaDataBase64;
 
   WatermarkProject copyWith({
     String? mediaPath,
@@ -36,9 +40,11 @@ class WatermarkProject {
     WatermarkCanvasSize? canvasSize,
     double? previewRatio,
     String? overlayPath,
+    String? overlayData,
     String? thumbnailPath,
     String? thumbnailData,
     DateTime? thumbnailUpdatedAt,
+    String? mediaDataBase64,
   }) {
     return WatermarkProject(
       id: id,
@@ -49,9 +55,11 @@ class WatermarkProject {
       canvasSize: canvasSize ?? this.canvasSize,
       previewRatio: previewRatio ?? this.previewRatio,
       overlayPath: overlayPath ?? this.overlayPath,
+      overlayData: overlayData ?? this.overlayData,
       thumbnailPath: thumbnailPath ?? this.thumbnailPath,
       thumbnailData: thumbnailData ?? this.thumbnailData,
       thumbnailUpdatedAt: thumbnailUpdatedAt ?? this.thumbnailUpdatedAt,
+      mediaDataBase64: mediaDataBase64 ?? this.mediaDataBase64,
     );
   }
 
@@ -64,9 +72,11 @@ class WatermarkProject {
         'canvasSize': canvasSize?.toJson(),
         'previewRatio': previewRatio,
         'overlayPath': overlayPath,
+        'overlayData': overlayData,
         'thumbnailPath': thumbnailPath,
         'thumbnailData': thumbnailData,
         'thumbnailUpdatedAt': thumbnailUpdatedAt?.toIso8601String(),
+        'mediaDataBase64': mediaDataBase64,
       };
 
   factory WatermarkProject.fromJson(Map<String, dynamic> json) {
@@ -90,11 +100,13 @@ class WatermarkProject {
             ),
       previewRatio: (json['previewRatio'] as num?)?.toDouble(),
       overlayPath: json['overlayPath'] as String?,
+      overlayData: json['overlayData'] as String?,
       thumbnailPath: json['thumbnailPath'] as String?,
       thumbnailData: json['thumbnailData'] as String?,
       thumbnailUpdatedAt: json['thumbnailUpdatedAt'] == null
           ? null
           : DateTime.tryParse(json['thumbnailUpdatedAt'] as String),
+      mediaDataBase64: json['mediaDataBase64'] as String?,
     );
   }
 }
