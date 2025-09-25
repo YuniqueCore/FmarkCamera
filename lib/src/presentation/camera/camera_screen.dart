@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -100,6 +102,7 @@ class _CameraScreenState extends State<CameraScreen>
       enableAudio: true,
     );
     await controller.initialize();
+    await _syncProfileCanvasSize(controller.value.previewSize);
     setState(() {
       _controller = controller;
       _isInitialized = true;
@@ -139,10 +142,19 @@ class _CameraScreenState extends State<CameraScreen>
             onPressed: _activeProfile == null
                 ? null
                 : () async {
+                    final previewSize = _controller?.value.previewSize;
+                    final fallbackCanvas = previewSize == null
+                        ? _activeProfile?.canvasSize
+                        : WatermarkCanvasSize(
+                            width: previewSize.width,
+                            height: previewSize.height,
+                          );
                     final selected = await Navigator.of(context).pushNamed(
                       TemplateManagerScreen.routeName,
                       arguments: TemplateManagerArguments(
-                          activeProfileId: _activeProfile!.id),
+                        activeProfileId: _activeProfile!.id,
+                        cameraCanvas: fallbackCanvas,
+                      ),
                     ) as WatermarkProfile?;
                     if (selected != null) {
                       setState(() => _activeProfile = selected);
@@ -398,6 +410,7 @@ class _CameraScreenState extends State<CameraScreen>
         CameraController(nextCamera, ResolutionPreset.high, enableAudio: true);
     await newController.initialize();
     await controller.dispose();
+    await _syncProfileCanvasSize(newController.value.previewSize);
     setState(() {
       _controller = newController;
     });
@@ -467,17 +480,35 @@ class _CameraScreenState extends State<CameraScreen>
     if (profile == null) {
       return;
     }
-    final element = WatermarkElement(
-      id: _uuid.v4(),
-      type: WatermarkElementType.image,
-      transform: const WatermarkTransform(
-          position: Offset(0.5, 0.5), scale: 1, rotation: 0),
-      payload: WatermarkElementPayload(imagePath: file.path),
-    );
-    final updated = [...profile.elements, element];
-    _updateProfile(
-        profile.copyWith(elements: updated, updatedAt: DateTime.now()));
-    setState(() => _selectedElementId = element.id);
+    try {
+      final payload = kIsWeb
+          ? WatermarkElementPayload(
+              imageBytesBase64: base64Encode(await file.readAsBytes()),
+              imagePath: '',
+            )
+          : WatermarkElementPayload(
+              imagePath: file.path,
+              imageBytesBase64: '',
+            );
+      final element = WatermarkElement(
+        id: _uuid.v4(),
+        type: WatermarkElementType.image,
+        transform: const WatermarkTransform(
+            position: Offset(0.5, 0.5), scale: 1, rotation: 0),
+        payload: payload,
+      );
+      final updated = [...profile.elements, element];
+      _updateProfile(
+          profile.copyWith(elements: updated, updatedAt: DateTime.now()));
+      setState(() => _selectedElementId = element.id);
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('图片导入失败，请重试')),
+      );
+    }
   }
 
   Future<void> _capturePhoto() async {
@@ -493,6 +524,7 @@ class _CameraScreenState extends State<CameraScreen>
       path: file.path,
       mediaType: WatermarkMediaType.photo,
       previewSize: controller.value.previewSize,
+      previewAspectRatio: controller.value.aspectRatio,
     );
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -513,6 +545,7 @@ class _CameraScreenState extends State<CameraScreen>
         path: file.path,
         mediaType: WatermarkMediaType.video,
         previewSize: controller.value.previewSize,
+        previewAspectRatio: controller.value.aspectRatio,
       );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -529,6 +562,7 @@ class _CameraScreenState extends State<CameraScreen>
     required String path,
     required WatermarkMediaType mediaType,
     required Size? previewSize,
+    double? previewAspectRatio,
   }) async {
     final profile = _activeProfile;
     if (profile == null) {
@@ -536,16 +570,20 @@ class _CameraScreenState extends State<CameraScreen>
     }
     final contextData = _contextController.context;
     final size = previewSize ?? const Size(1080, 1920);
+    final canvasSize = WatermarkCanvasSize(
+      width: size.width,
+      height: size.height,
+    );
     String? overlayPath;
     try {
       final bytes = await _renderer.renderToBytes(
         profile: profile,
         context: contextData,
-        canvasSize: size,
+        canvasSize: canvasSize.toSize(),
       );
       if (!kIsWeb) {
         final overlayFile = await _exporter.saveOverlayBytes(bytes);
-      overlayPath = overlayFile;
+        overlayPath = overlayFile;
       }
     } catch (_) {
       overlayPath = null;
@@ -556,11 +594,48 @@ class _CameraScreenState extends State<CameraScreen>
       mediaType: mediaType,
       capturedAt: DateTime.now(),
       profileId: profile.id,
+      canvasSize: canvasSize,
+      previewRatio: previewAspectRatio ?? (size.width / size.height),
       overlayPath: overlayPath,
     );
     final updatedProjects = [..._projects, project];
     await _projectRepository.saveProjects(updatedProjects);
     setState(() => _projects = updatedProjects);
+  }
+
+  Future<void> _syncProfileCanvasSize(Size? previewSize) async {
+    if (previewSize == null) {
+      return;
+    }
+    final canvasSize = WatermarkCanvasSize(
+      width: previewSize.width,
+      height: previewSize.height,
+    );
+    bool changed = false;
+    final updated = _profiles
+        .map((profile) => profile.canvasSize == null
+            ? (() {
+                changed = true;
+                return profile.copyWith(
+                  canvasSize: canvasSize,
+                  updatedAt: DateTime.now(),
+                );
+              })()
+            : profile)
+        .toList();
+    if (!changed) {
+      return;
+    }
+    setState(() {
+      _profiles = updated;
+      if (_activeProfile != null) {
+        _activeProfile = updated.firstWhere(
+          (item) => item.id == _activeProfile!.id,
+          orElse: () => updated.first,
+        );
+      }
+    });
+    await _profileRepository.saveProfiles(updated);
   }
 
   Future<void> _updateProfile(WatermarkProfile profile) async {

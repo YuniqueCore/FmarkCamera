@@ -23,6 +23,7 @@ class _TemplateManagerScreenState extends State<TemplateManagerScreen> {
   late final WatermarkProfileRepository _repository;
   List<WatermarkProfile> _profiles = const <WatermarkProfile>[];
   String? _activeProfileId;
+  WatermarkCanvasSize? _cameraCanvas;
   bool _initialized = false;
   bool _loading = true;
 
@@ -42,18 +43,37 @@ class _TemplateManagerScreenState extends State<TemplateManagerScreen> {
     final args =
         ModalRoute.of(context)?.settings.arguments as TemplateManagerArguments?;
     _activeProfileId = args?.activeProfileId;
+    _cameraCanvas = args?.cameraCanvas;
     _loadProfiles();
   }
 
   Future<void> _loadProfiles() async {
     final profiles = await _repository.loadProfiles();
+    List<WatermarkProfile> normalized = profiles;
+    if (_cameraCanvas != null) {
+      bool changed = false;
+      normalized = profiles
+          .map((profile) => profile.canvasSize == null
+              ? (() {
+                  changed = true;
+                  return profile.copyWith(
+                    canvasSize: _cameraCanvas,
+                    updatedAt: DateTime.now(),
+                  );
+                })()
+              : profile)
+          .toList();
+      if (changed) {
+        await _repository.saveProfiles(normalized);
+      }
+    }
     setState(() {
-      _profiles = profiles;
+      _profiles = normalized;
       _loading = false;
-      if (_activeProfileId == null && profiles.isNotEmpty) {
-        final selected = profiles.firstWhere(
+      if (_activeProfileId == null && normalized.isNotEmpty) {
+        final selected = normalized.firstWhere(
           (profile) => profile.isDefault,
-          orElse: () => profiles.first,
+          orElse: () => normalized.first,
         );
         _activeProfileId = selected.id;
       }
@@ -65,9 +85,9 @@ class _TemplateManagerScreenState extends State<TemplateManagerScreen> {
     if (_loading) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
-    final active =
-        _profiles.firstWhere((profile) => profile.id == _activeProfileId,
-            orElse: () => _profiles.first);
+    final active = _profiles.firstWhere(
+        (profile) => profile.id == _activeProfileId,
+        orElse: () => _profiles.first);
     return Scaffold(
       appBar: AppBar(
         title: const Text('水印模板管理'),
@@ -123,7 +143,9 @@ class _TemplateManagerScreenState extends State<TemplateManagerScreen> {
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(16),
-                color: selected ? Colors.orangeAccent.withValues(alpha: 0.25) : Colors.white10,
+                color: selected
+                    ? Colors.orangeAccent.withValues(alpha: 0.25)
+                    : Colors.white10,
                 border: Border.all(
                   color: selected ? Colors.orangeAccent : Colors.white24,
                   width: selected ? 2 : 1,
@@ -164,7 +186,9 @@ class _TemplateManagerScreenState extends State<TemplateManagerScreen> {
                   Align(
                     alignment: Alignment.bottomRight,
                     child: Icon(
-                      selected ? Icons.radio_button_checked : Icons.radio_button_off,
+                      selected
+                          ? Icons.radio_button_checked
+                          : Icons.radio_button_off,
                       color: selected ? Colors.orangeAccent : Colors.white38,
                       size: 18,
                     ),
@@ -234,7 +258,8 @@ class _TemplateManagerScreenState extends State<TemplateManagerScreen> {
         .map((element) => ListTile(
               leading: Icon(_iconForType(element.type)),
               title: Text(_titleForElement(element)),
-              subtitle: Text('透明度 ${(element.opacity * 100).round()}% · z-index ${element.zIndex}'),
+              subtitle: Text(
+                  '透明度 ${(element.opacity * 100).round()}% · z-index ${element.zIndex}'),
               trailing: IconButton(
                 icon: const Icon(Icons.delete_outline),
                 onPressed: () => _removeElement(profile, element.id),
@@ -249,6 +274,7 @@ class _TemplateManagerScreenState extends State<TemplateManagerScreen> {
       arguments: WatermarkProfileEditorArguments(
         profile: profile,
         bootstrapper: widget.bootstrapper,
+        fallbackCanvasSize: _cameraCanvas,
       ),
     ) as WatermarkProfile?;
     if (edited == null) {
@@ -267,7 +293,8 @@ class _TemplateManagerScreenState extends State<TemplateManagerScreen> {
       id: _uuid.v4(),
       name: '模板 ${_profiles.length + 1}',
       elements: const <WatermarkElement>[],
-      canvasSize: const WatermarkCanvasSize(width: 1080, height: 1920),
+      canvasSize:
+          _cameraCanvas ?? const WatermarkCanvasSize(width: 1080, height: 1920),
       updatedAt: DateTime.now(),
     );
     setState(() {
@@ -278,9 +305,7 @@ class _TemplateManagerScreenState extends State<TemplateManagerScreen> {
 
   void _duplicateProfile(WatermarkProfile profile) {
     final duplicated = profile.copyWith(
-      elements: profile.elements
-          .map((element) => element.copyWith())
-          .toList(),
+      elements: profile.elements.map((element) => element.copyWith()).toList(),
       name: '${profile.name} 副本',
       updatedAt: DateTime.now(),
     );
@@ -299,9 +324,9 @@ class _TemplateManagerScreenState extends State<TemplateManagerScreen> {
 
   void _deleteProfile(WatermarkProfile profile) {
     if (_profiles.length <= 1) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('至少保留一个模板')),
-    );
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('至少保留一个模板')),
+      );
       return;
     }
     setState(() {
@@ -395,8 +420,10 @@ class _TemplateManagerScreenState extends State<TemplateManagerScreen> {
               onPressed: () {
                 final width = double.tryParse(widthController.text);
                 final height = double.tryParse(heightController.text);
-                if (width == null || height == null ||
-                    width <= 0 || height <= 0) {
+                if (width == null ||
+                    height == null ||
+                    width <= 0 ||
+                    height <= 0) {
                   Navigator.pop(context);
                   return;
                 }
@@ -429,9 +456,8 @@ class _TemplateManagerScreenState extends State<TemplateManagerScreen> {
 
   void _removeElement(WatermarkProfile profile, String elementId) {
     setState(() {
-      final updated = profile.elements
-          .where((element) => element.id != elementId)
-          .toList();
+      final updated =
+          profile.elements.where((element) => element.id != elementId).toList();
       _profiles = _profiles
           .map((item) => item.id == profile.id
               ? item.copyWith(elements: updated, updatedAt: DateTime.now())
@@ -480,7 +506,11 @@ class _TemplateManagerScreenState extends State<TemplateManagerScreen> {
 }
 
 class TemplateManagerArguments {
-  const TemplateManagerArguments({required this.activeProfileId});
+  const TemplateManagerArguments({
+    required this.activeProfileId,
+    this.cameraCanvas,
+  });
 
   final String activeProfileId;
+  final WatermarkCanvasSize? cameraCanvas;
 }

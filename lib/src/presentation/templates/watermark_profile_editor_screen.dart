@@ -1,13 +1,18 @@
+import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 
 import 'package:fmark_camera/src/domain/models/watermark_context.dart';
 import 'package:fmark_camera/src/domain/models/watermark_element.dart';
 import 'package:fmark_camera/src/domain/models/watermark_element_payload.dart';
 import 'package:fmark_camera/src/domain/models/watermark_profile.dart';
+import 'package:fmark_camera/src/domain/models/watermark_text_style.dart';
 import 'package:fmark_camera/src/domain/models/watermark_transform.dart';
 import 'package:fmark_camera/src/services/bootstrapper.dart';
 import 'package:fmark_camera/src/services/watermark_context_controller.dart';
@@ -43,6 +48,13 @@ class _WatermarkProfileEditorScreenState
     final bootstrapper = widget.arguments.bootstrapper;
     _contextController = bootstrapper.contextController;
     _profile = widget.arguments.profile;
+    final fallbackCanvas = widget.arguments.fallbackCanvasSize;
+    if (_profile.canvasSize == null && fallbackCanvas != null) {
+      _profile = _profile.copyWith(
+        canvasSize: fallbackCanvas,
+        updatedAt: DateTime.now(),
+      );
+    }
     _currentContext = _contextController.context;
     _contextController.addListener(_handleContextChanged);
   }
@@ -159,22 +171,27 @@ class _WatermarkProfileEditorScreenState
                     runSpacing: 8,
                     children: [
                       _buildAddButton('时间', Icons.access_time, _addTimeElement),
-                      _buildAddButton('地点', Icons.place_outlined, _addLocationElement),
-                      _buildAddButton('天气', Icons.wb_sunny_outlined, _addWeatherElement),
+                      _buildAddButton(
+                          '地点', Icons.place_outlined, _addLocationElement),
+                      _buildAddButton(
+                          '天气', Icons.wb_sunny_outlined, _addWeatherElement),
                       _buildAddButton('文本', Icons.text_fields, _addTextElement),
-                      _buildAddButton('图片', Icons.image_outlined, _addImageElement),
+                      _buildAddButton(
+                          '图片', Icons.image_outlined, _addImageElement),
                     ],
                   ),
                 ),
                 IconButton(
                   icon: const Icon(Icons.refresh_outlined),
                   tooltip: '重置选中元素',
-                  onPressed: hasSelection ? () => _resetElement(selected) : null,
+                  onPressed:
+                      hasSelection ? () => _resetElement(selected) : null,
                 ),
                 IconButton(
                   icon: const Icon(Icons.layers),
                   tooltip: '层级调整',
-                  onPressed: hasSelection ? () => _openLayerDialog(selected) : null,
+                  onPressed:
+                      hasSelection ? () => _openLayerDialog(selected) : null,
                 ),
               ],
             ),
@@ -241,6 +258,13 @@ class _WatermarkProfileEditorScreenState
           children: [
             Expanded(
               child: TextButton.icon(
+                icon: const Icon(Icons.edit_note),
+                label: const Text('内容设置'),
+                onPressed: () => _openContentEditor(element),
+              ),
+            ),
+            Expanded(
+              child: TextButton.icon(
                 icon: const Icon(Icons.text_fields),
                 label: const Text('文本样式'),
                 onPressed: element.type == WatermarkElementType.image
@@ -250,7 +274,7 @@ class _WatermarkProfileEditorScreenState
             ),
             Expanded(
               child: TextButton.icon(
-                icon: const Icon(Icons.tune),
+                icon: const Icon(Icons.transform),
                 label: const Text('变换详情'),
                 onPressed: () => _openTransformSheet(element),
               ),
@@ -265,12 +289,364 @@ class _WatermarkProfileEditorScreenState
     );
   }
 
+  void _openContentEditor(WatermarkElement element) {
+    switch (element.type) {
+      case WatermarkElementType.text:
+        _openTextContentSheet(element);
+        break;
+      case WatermarkElementType.time:
+        _openTimeFormatSheet(element);
+        break;
+      case WatermarkElementType.location:
+        _openLocationOptionsSheet(element);
+        break;
+      case WatermarkElementType.weather:
+        _openWeatherOptionsSheet(element);
+        break;
+      case WatermarkElementType.image:
+        _openImageContentSheet(element);
+        break;
+    }
+  }
+
+  Future<void> _openTextContentSheet(WatermarkElement element) async {
+    final controller =
+        TextEditingController(text: element.payload.text ?? '编辑文本');
+    final result = await showModalBottomSheet<String>(
+      context: context,
+      builder: (context) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('文本内容', style: Theme.of(context).textTheme.titleMedium),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: controller,
+                  decoration: const InputDecoration(
+                    labelText: '显示文本',
+                    border: OutlineInputBorder(),
+                  ),
+                  maxLines: 2,
+                ),
+                const SizedBox(height: 12),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: FilledButton(
+                    onPressed: () =>
+                        Navigator.pop(context, controller.text.trim()),
+                    child: const Text('确定'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+    controller.dispose();
+    if (result == null) {
+      return;
+    }
+    final value = result.isEmpty ? '文本' : result;
+    _updateElement(
+      element.copyWith(
+        payload: element.payload.copyWith(text: value),
+      ),
+    );
+  }
+
+  Future<void> _openTimeFormatSheet(WatermarkElement element) async {
+    final presets = <String>[
+      'yyyy-MM-dd HH:mm:ss',
+      'yyyy/MM/dd HH:mm',
+      'MM月dd日 HH:mm',
+      'HH:mm:ss',
+    ];
+    final controller = TextEditingController(
+      text: element.payload.timeFormat ?? presets.first,
+    );
+    String preview = _formatTimePreview(controller.text);
+    final result = await showModalBottomSheet<String>(
+      context: context,
+      builder: (context) {
+        return SafeArea(
+          child: StatefulBuilder(
+            builder: (context, setModalState) {
+              return Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('时间格式',
+                        style: Theme.of(context).textTheme.titleMedium),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: controller,
+                      decoration: const InputDecoration(
+                        labelText: '格式化 pattern',
+                        border: OutlineInputBorder(),
+                      ),
+                      onChanged: (value) => setModalState(
+                        () => preview = _formatTimePreview(value),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<String>(
+                      initialValue: presets.contains(controller.text)
+                          ? controller.text
+                          : null,
+                      decoration: const InputDecoration(
+                        labelText: '快速选择',
+                        border: OutlineInputBorder(),
+                      ),
+                      items: presets
+                          .map((value) => DropdownMenuItem(
+                                value: value,
+                                child: Text(value),
+                              ))
+                          .toList(),
+                      onChanged: (value) {
+                        if (value == null) {
+                          return;
+                        }
+                        controller.text = value;
+                        setModalState(
+                          () => preview = _formatTimePreview(value),
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    Text('预览：$preview',
+                        style: const TextStyle(color: Colors.white70)),
+                    const SizedBox(height: 12),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: FilledButton(
+                        onPressed: () =>
+                            Navigator.pop(context, controller.text.trim()),
+                        child: const Text('确定'),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        );
+      },
+    );
+    controller.dispose();
+    if (result == null || result.isEmpty) {
+      return;
+    }
+    _updateElement(
+      element.copyWith(
+        payload: element.payload.copyWith(timeFormat: result),
+      ),
+    );
+  }
+
+  Future<void> _openLocationOptionsSheet(WatermarkElement element) async {
+    var showAddress = element.payload.showAddress;
+    var showCoordinates = element.payload.showCoordinates;
+    final confirmed = await showModalBottomSheet<bool>(
+      context: context,
+      builder: (context) {
+        return SafeArea(
+          child: StatefulBuilder(
+            builder: (context, setModalState) {
+              return Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text('地点显示',
+                        style: Theme.of(context).textTheme.titleMedium),
+                    SwitchListTile(
+                      title: const Text('显示地址/地名'),
+                      value: showAddress,
+                      onChanged: (value) =>
+                          setModalState(() => showAddress = value),
+                    ),
+                    SwitchListTile(
+                      title: const Text('显示经纬度'),
+                      value: showCoordinates,
+                      onChanged: (value) =>
+                          setModalState(() => showCoordinates = value),
+                    ),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: FilledButton(
+                        onPressed: () => Navigator.pop(context, true),
+                        child: const Text('确定'),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        );
+      },
+    );
+    if (confirmed != true) {
+      return;
+    }
+    _updateElement(
+      element.copyWith(
+        payload: element.payload.copyWith(
+          showAddress: showAddress,
+          showCoordinates: showCoordinates,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openWeatherOptionsSheet(WatermarkElement element) async {
+    var showDescription = element.payload.showWeatherDescription;
+    final confirmed = await showModalBottomSheet<bool>(
+      context: context,
+      builder: (context) {
+        return SafeArea(
+          child: StatefulBuilder(
+            builder: (context, setModalState) {
+              return Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text('天气显示',
+                        style: Theme.of(context).textTheme.titleMedium),
+                    SwitchListTile(
+                      title: const Text('显示天气描述'),
+                      value: showDescription,
+                      onChanged: (value) =>
+                          setModalState(() => showDescription = value),
+                    ),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: FilledButton(
+                        onPressed: () => Navigator.pop(context, true),
+                        child: const Text('确定'),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        );
+      },
+    );
+    if (confirmed != true) {
+      return;
+    }
+    _updateElement(
+      element.copyWith(
+        payload:
+            element.payload.copyWith(showWeatherDescription: showDescription),
+      ),
+    );
+  }
+
+  Future<void> _openImageContentSheet(WatermarkElement element) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      builder: (context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.image_outlined),
+                title: const Text('从相册选择'),
+                onTap: () async {
+                  Navigator.pop(context);
+                  await _pickImageForElement(element);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.delete_outline),
+                title: const Text('移除图片'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _updateElement(
+                    element.copyWith(
+                      payload: element.payload.copyWith(
+                        imagePath: '',
+                        imageBytesBase64: '',
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   void _onElementSelected(String? id) {
     setState(() => _selectedElementId = id);
   }
 
+  Future<void> _pickImageForElement(WatermarkElement element) async {
+    final picker = ImagePicker();
+    final file = await picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 90,
+    );
+    if (file == null) {
+      return;
+    }
+    try {
+      if (kIsWeb) {
+        final bytes = await file.readAsBytes();
+        _updateElement(
+          element.copyWith(
+            payload: element.payload.copyWith(
+              imageBytesBase64: base64Encode(bytes),
+              imagePath: '',
+              assetName: '',
+            ),
+          ),
+        );
+      } else {
+        _updateElement(
+          element.copyWith(
+            payload: element.payload.copyWith(
+              imagePath: file.path,
+              imageBytesBase64: '',
+              assetName: '',
+            ),
+          ),
+        );
+      }
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('图片导入失败，请重试')),
+      );
+    }
+  }
+
   void _onElementChanged(WatermarkElement element) {
     _updateElement(element.copyWith(transform: element.transform));
+  }
+
+  String _formatTimePreview(String pattern) {
+    try {
+      return DateFormat(pattern).format(_context.now);
+    } catch (_) {
+      return '格式不合法';
+    }
   }
 
   void _updateElement(WatermarkElement updated) {
@@ -460,20 +836,27 @@ class _WatermarkProfileEditorScreenState
   }
 
   void _addImageElement() {
-    _addElement(
-      WatermarkElement(
-        id: _uuid.v4(),
-        type: WatermarkElementType.image,
-        transform: const WatermarkTransform(
-          position: Offset(0.5, 0.6),
-          scale: 1,
-          rotation: 0,
-        ),
-        payload: const WatermarkElementPayload(
-          imagePath: '',
-        ),
+    final element = WatermarkElement(
+      id: _uuid.v4(),
+      type: WatermarkElementType.image,
+      transform: const WatermarkTransform(
+        position: Offset(0.5, 0.6),
+        scale: 1,
+        rotation: 0,
+      ),
+      payload: const WatermarkElementPayload(
+        imagePath: '',
+        imageBytesBase64: '',
       ),
     );
+    _addElement(element);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final created = _profile.elements.firstWhere(
+        (item) => item.id == element.id,
+        orElse: () => element,
+      );
+      _openContentEditor(created);
+    });
   }
 
   void _addElement(WatermarkElement element) {
@@ -490,7 +873,114 @@ class _WatermarkProfileEditorScreenState
   }
 
   void _openTextStyleEditor(WatermarkElement element) {
-    // Placeholder for future detailed text style editor.
+    final initial = element.textStyle ?? const WatermarkTextStyle();
+    var fontSize = initial.fontSize;
+    var isBold = initial.fontWeight.index >= FontWeight.w600.index;
+    var color = initial.color;
+    const palette = <Color>[
+      Colors.white,
+      Colors.black,
+      Colors.orangeAccent,
+      Colors.lightBlueAccent,
+      Colors.redAccent,
+      Colors.greenAccent,
+    ];
+    showModalBottomSheet<void>(
+      context: context,
+      builder: (context) {
+        return SafeArea(
+          child: StatefulBuilder(
+            builder: (context, setModalState) {
+              return Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text('文本样式',
+                        style: Theme.of(context).textTheme.titleMedium),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        const Text('字号',
+                            style: TextStyle(color: Colors.white70)),
+                        Expanded(
+                          child: Slider(
+                            value: fontSize.clamp(10, 72),
+                            min: 10,
+                            max: 72,
+                            onChanged: (value) =>
+                                setModalState(() => fontSize = value),
+                          ),
+                        ),
+                        Text(fontSize.toStringAsFixed(0),
+                            style: const TextStyle(color: Colors.white70)),
+                      ],
+                    ),
+                    SwitchListTile(
+                      title: const Text('加粗'),
+                      value: isBold,
+                      onChanged: (value) => setModalState(() => isBold = value),
+                    ),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: palette
+                            .map(
+                              (candidate) => GestureDetector(
+                                onTap: () =>
+                                    setModalState(() => color = candidate),
+                                child: CircleAvatar(
+                                  radius: 14,
+                                  backgroundColor: candidate,
+                                  child: color == candidate
+                                      ? Icon(
+                                          Icons.check,
+                                          size: 14,
+                                          color:
+                                              candidate.computeLuminance() > 0.5
+                                                  ? Colors.black
+                                                  : Colors.white,
+                                        )
+                                      : null,
+                                ),
+                              ),
+                            )
+                            .toList(),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: FilledButton(
+                        onPressed: () {
+                          Navigator.pop(context);
+                          _updateElement(
+                            element.copyWith(
+                              textStyle: WatermarkTextStyle(
+                                fontSize: fontSize,
+                                fontWeight:
+                                    isBold ? FontWeight.w700 : FontWeight.w500,
+                                color: color,
+                                background: initial.background,
+                                shadow: initial.shadow,
+                                letterSpacing: initial.letterSpacing,
+                              ),
+                            ),
+                          );
+                        },
+                        child: const Text('应用'),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        );
+      },
+    );
   }
 
   void _openTransformSheet(WatermarkElement element) {
@@ -618,10 +1108,12 @@ class WatermarkProfileEditorArguments {
   const WatermarkProfileEditorArguments({
     required this.profile,
     required this.bootstrapper,
+    this.fallbackCanvasSize,
   });
 
   final WatermarkProfile profile;
   final Bootstrapper bootstrapper;
+  final WatermarkCanvasSize? fallbackCanvasSize;
 }
 
 class _GridPainter extends CustomPainter {
@@ -648,4 +1140,3 @@ class _GridPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
-

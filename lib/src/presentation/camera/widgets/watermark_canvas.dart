@@ -37,8 +37,20 @@ class WatermarkCanvas extends StatelessWidget {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final width = constraints.maxWidth;
-        final height = width / canvasSize.width * canvasSize.height;
+        final fallbackWidth = canvasSize.width > 0 ? canvasSize.width : 1080.0;
+        final fallbackHeight =
+            canvasSize.height > 0 ? canvasSize.height : 1920.0;
+        double width = constraints.maxWidth;
+        if (width.isInfinite || width <= 0) {
+          width = fallbackWidth;
+        }
+        double height = width / fallbackWidth * fallbackHeight;
+        final maxHeight = constraints.maxHeight;
+        if (!maxHeight.isInfinite && maxHeight > 0 && height > maxHeight) {
+          final scale = maxHeight / height;
+          height = maxHeight;
+          width = width * scale;
+        }
         final orderedElements = [...elements]
           ..sort((a, b) => a.zIndex.compareTo(b.zIndex));
         return Center(

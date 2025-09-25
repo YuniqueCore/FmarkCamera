@@ -44,35 +44,74 @@ class WatermarkElementWidget extends StatefulWidget {
 }
 
 class _WatermarkElementWidgetState extends State<WatermarkElementWidget> {
-  late Offset _initialPosition;
+  late Offset _currentPosition;
   late double _initialScale;
   late double _initialRotation;
+  Offset? _lastFocalPoint;
+
+  @override
+  void initState() {
+    super.initState();
+    _syncFromWidget();
+  }
+
+  @override
+  void didUpdateWidget(covariant WatermarkElementWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.element.id != widget.element.id ||
+        oldWidget.element.transform != widget.element.transform) {
+      _syncFromWidget();
+    }
+  }
+
+  void _syncFromWidget() {
+    final transform = widget.element.transform;
+    _currentPosition = transform.position;
+    _initialScale = transform.scale;
+    _initialRotation = transform.rotation;
+  }
 
   void _onScaleStart(ScaleStartDetails details) {
-    _initialPosition = widget.element.transform.position;
-    _initialScale = widget.element.transform.scale;
-    _initialRotation = widget.element.transform.rotation;
+    if (widget.element.isLocked) {
+      return;
+    }
+    _syncFromWidget();
+    _lastFocalPoint = details.focalPoint;
     widget.onSelected?.call();
   }
 
   void _onScaleUpdate(ScaleUpdateDetails details) {
+    if (widget.element.isLocked) {
+      return;
+    }
     final canvasSize = widget.canvasSize.toSize();
-    final delta = details.focalPointDelta;
-    final dx = delta.dx / canvasSize.width;
-    final dy = delta.dy / canvasSize.height;
-    final position = Offset(
-      (_initialPosition.dx + dx).clamp(0.0, 1.0),
-      (_initialPosition.dy + dy).clamp(0.0, 1.0),
-    );
+    if (_lastFocalPoint != null &&
+        canvasSize.width > 0 &&
+        canvasSize.height > 0) {
+      final delta = details.focalPoint - _lastFocalPoint!;
+      _lastFocalPoint = details.focalPoint;
+      final normalized = Offset(
+        delta.dx / canvasSize.width,
+        delta.dy / canvasSize.height,
+      );
+      _currentPosition = Offset(
+        (_currentPosition.dx + normalized.dx).clamp(0.0, 1.0),
+        (_currentPosition.dy + normalized.dy).clamp(0.0, 1.0),
+      );
+    }
     final scale = (_initialScale * details.scale).clamp(0.3, 3.0);
     final rotation = _initialRotation + details.rotation;
     widget.onTransform(
       widget.element.transform.copyWith(
-        position: position,
+        position: _currentPosition,
         scale: scale,
         rotation: rotation,
       ),
     );
+  }
+
+  void _onScaleEnd(ScaleEndDetails details) {
+    _lastFocalPoint = null;
   }
 
   @override
@@ -102,8 +141,14 @@ class _WatermarkElementWidgetState extends State<WatermarkElementWidget> {
       child: GestureDetector(
         behavior: HitTestBehavior.translucent,
         onTap: widget.onSelected,
-        onScaleStart: widget.isEditing ? _onScaleStart : null,
-        onScaleUpdate: widget.isEditing ? _onScaleUpdate : null,
+        onTapDown: (_) => widget.onSelected?.call(),
+        onScaleStart:
+            widget.isEditing && !widget.element.isLocked ? _onScaleStart : null,
+        onScaleUpdate: widget.isEditing && !widget.element.isLocked
+            ? _onScaleUpdate
+            : null,
+        onScaleEnd:
+            widget.isEditing && !widget.element.isLocked ? _onScaleEnd : null,
         child: Stack(
           clipBehavior: Clip.none,
           children: [
