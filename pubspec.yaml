@@ -1,0 +1,33 @@
+name: fmark_camera
+description: Fmark Camera app with layered customizable watermarks.
+publish_to: 'none'
+version: 0.1.0+1
+
+environment:
+  sdk: '>=3.3.0 <4.0.0'
+  flutter: '>=3.19.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  camera: ^0.10.5+9
+  video_player: ^2.7.2
+  permission_handler: ^11.3.0
+  geolocator: ^10.1.0
+  geocoding: ^2.1.0
+  http: ^1.2.0
+  intl: ^0.19.0
+  image_picker: ^1.0.7
+  path_provider: ^2.1.2
+  ffmpeg_kit_flutter_min_gpl: ^4.5.1
+  uuid: ^4.4.0
+  collection: ^1.18.0
+  path: ^1.8.3
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true
