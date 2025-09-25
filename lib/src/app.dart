@@ -46,8 +46,6 @@ class _FmarkCameraAppState extends State<FmarkCameraApp> {
       ),
       home: CameraScreen(bootstrapper: _bootstrapper),
       routes: {
-        CameraScreen.routeName: (_) =>
-            CameraScreen(bootstrapper: _bootstrapper),
         TemplateManagerScreen.routeName: (_) =>
             TemplateManagerScreen(bootstrapper: _bootstrapper),
         GalleryScreen.routeName: (_) =>
