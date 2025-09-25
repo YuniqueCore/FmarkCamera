@@ -36,9 +36,11 @@ class WatermarkTextStyle {
   }
 
   TextStyle asTextStyle() {
-    final backgroundPaint = background == null ? null : Paint()
-      ?..color = background!
-      ..style = PaintingStyle.fill;
+    final backgroundPaint = background == null
+        ? null
+        : (Paint()
+          ..color = background!
+          ..style = PaintingStyle.fill);
     return TextStyle(
       fontSize: fontSize,
       fontWeight: fontWeight,
@@ -52,12 +54,12 @@ class WatermarkTextStyle {
   Map<String, dynamic> toJson() => <String, dynamic>{
         'fontSize': fontSize,
         'fontWeight': fontWeight.index,
-        'color': color.value,
-        'background': background?.value,
+        'color': color.toARGB32(),
+        'background': background?.toARGB32(),
         'shadow': shadow == null
             ? null
             : <String, dynamic>{
-                'color': shadow!.color.value,
+                'color': shadow!.color.toARGB32(),
                 'offset': <String, double>{
                   'dx': shadow!.offset.dx,
                   'dy': shadow!.offset.dy,
@@ -74,15 +76,16 @@ class WatermarkTextStyle {
       fontSize: (json['fontSize'] as num?)?.toDouble() ?? 18,
       fontWeight: FontWeight
           .values[(json['fontWeight'] as int?) ?? FontWeight.w600.index],
-      color: Color((json['color'] as int?) ?? Colors.white.value),
+      color: json['color'] is int ? Color(json['color'] as int) : Colors.white,
       background: (json['background'] as int?) == null
           ? null
           : Color(json['background'] as int),
       shadow: shadowJson == null
           ? null
           : Shadow(
-              color:
-                  Color((shadowJson['color'] as int?) ?? Colors.black54.value),
+              color: (shadowJson['color'] as int?) == null
+                  ? Colors.black54
+                  : Color(shadowJson['color'] as int),
               offset: Offset(
                 (offsetJson?['dx'] as num?)?.toDouble() ?? 0,
                 (offsetJson?['dy'] as num?)?.toDouble() ?? 0,
