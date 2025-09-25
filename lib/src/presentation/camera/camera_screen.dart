@@ -1,34 +1,30 @@
-import 'dart:convert';
-
 import 'package:camera/camera.dart';
-import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:uuid/uuid.dart';
 
 import 'package:fmark_camera/src/domain/models/watermark_context.dart';
-import 'package:fmark_camera/src/domain/models/watermark_element.dart';
-import 'package:fmark_camera/src/domain/models/watermark_element_payload.dart';
 import 'package:fmark_camera/src/domain/models/watermark_media_type.dart';
 import 'package:fmark_camera/src/domain/models/watermark_profile.dart';
 import 'package:fmark_camera/src/domain/models/watermark_project.dart';
-import 'package:fmark_camera/src/domain/models/watermark_transform.dart';
-import 'package:fmark_camera/src/domain/repositories/project_repository.dart';
-import 'package:fmark_camera/src/domain/repositories/watermark_profile_repository.dart';
 import 'package:fmark_camera/src/services/bootstrapper.dart';
 import 'package:fmark_camera/src/services/watermark_context_controller.dart';
 import 'package:fmark_camera/src/services/watermark_exporter.dart';
+import 'package:fmark_camera/src/services/watermark_profiles_controller.dart';
+import 'package:fmark_camera/src/services/watermark_projects_controller.dart';
 import 'package:fmark_camera/src/services/watermark_renderer.dart';
 import 'package:fmark_camera/src/presentation/gallery/gallery_screen.dart';
-import 'package:fmark_camera/src/presentation/templates/template_manager_screen.dart';
-import 'package:fmark_camera/src/presentation/widgets/context_badge.dart';
-import 'package:fmark_camera/src/presentation/camera/widgets/watermark_canvas.dart';
+import 'package:fmark_camera/src/presentation/profiles/profile_editor_screen.dart';
+import 'package:fmark_camera/src/presentation/profiles/profiles_screen.dart';
+import 'package:fmark_camera/src/presentation/widgets/watermark_canvas.dart';
 
 class CameraScreen extends StatefulWidget {
   const CameraScreen({super.key, required this.bootstrapper});
 
   static const String routeName = '/';
+
   final Bootstrapper bootstrapper;
 
   @override
@@ -38,51 +34,34 @@ class CameraScreen extends StatefulWidget {
 class _CameraScreenState extends State<CameraScreen>
     with WidgetsBindingObserver {
   final Uuid _uuid = const Uuid();
-  CameraController? _controller;
-  List<CameraDescription> _cameras = const <CameraDescription>[];
+
+  CameraController? _cameraController;
+  List<CameraDescription> _availableCameras = const <CameraDescription>[];
   bool _isInitialized = false;
   bool _isRecording = false;
   bool _isVideoMode = false;
-  bool _isEditing = true;
-  String? _selectedElementId;
-  List<WatermarkProfile> _profiles = const <WatermarkProfile>[];
-  WatermarkProfile? _activeProfile;
-  List<WatermarkProject> _projects = const <WatermarkProject>[];
 
-  WatermarkProfileRepository get _profileRepository =>
-      widget.bootstrapper.profileRepository;
-  ProjectRepository get _projectRepository =>
-      widget.bootstrapper.projectRepository;
-  WatermarkRenderer get _renderer => widget.bootstrapper.renderer;
-  WatermarkContextController get _contextController =>
-      widget.bootstrapper.contextController;
-  WatermarkExporter get _exporter => widget.bootstrapper.exporter;
+  late final WatermarkProfilesController _profilesController;
+  late final WatermarkProjectsController _projectsController;
+  late final WatermarkContextController _contextController;
+  late final WatermarkRenderer _renderer;
+  late final WatermarkExporter _exporter;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _prepare();
+    final bootstrapper = widget.bootstrapper;
+    _profilesController = bootstrapper.profilesController;
+    _projectsController = bootstrapper.projectsController;
+    _contextController = bootstrapper.contextController;
+    _renderer = bootstrapper.renderer;
+    _exporter = bootstrapper.exporter;
+    _initialize();
   }
 
-  Future<void> _prepare() async {
-    await _loadData();
+  Future<void> _initialize() async {
     await _initializeCamera();
-  }
-
-  Future<void> _loadData() async {
-    final profiles = await _profileRepository.loadProfiles();
-    final projects = await _projectRepository.loadProjects();
-    setState(() {
-      _profiles = profiles;
-      _projects = projects;
-      _activeProfile = profiles.isNotEmpty
-          ? profiles.firstWhere(
-              (profile) => profile.isDefault,
-              orElse: () => profiles.first,
-            )
-          : null;
-    });
   }
 
   Future<void> _initializeCamera() async {
@@ -92,19 +71,24 @@ class _CameraScreenState extends State<CameraScreen>
         return;
       }
     }
-    _cameras = await availableCameras();
-    if (_cameras.isEmpty) {
+    _availableCameras = await availableCameras();
+    if (_availableCameras.isEmpty) {
       return;
     }
     final controller = CameraController(
-      _cameras.first,
+      _availableCameras.first,
       ResolutionPreset.high,
       enableAudio: true,
     );
     await controller.initialize();
-    await _syncProfileCanvasSize(controller.value.previewSize);
+    await _profilesController.ensureCanvasSize(
+      WatermarkCanvasSize(
+        width: controller.value.previewSize?.width ?? 1080,
+        height: controller.value.previewSize?.height ?? 1920,
+      ),
+    );
     setState(() {
-      _controller = controller;
+      _cameraController = controller;
       _isInitialized = true;
     });
   }
@@ -112,18 +96,16 @@ class _CameraScreenState extends State<CameraScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _controller?.dispose();
+    _cameraController?.dispose();
     super.dispose();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    final controller = _controller;
+    final controller = _cameraController;
     if (controller == null || !controller.value.isInitialized) {
       return;
     }
-    // On web, controller dispose during tab backgrounding can race with rebuild.
-    // Keep it simple: only reinitialize on resumed; avoid disposing here.
     if (state == AppLifecycleState.resumed) {
       _initializeCamera();
     }
@@ -131,205 +113,134 @@ class _CameraScreenState extends State<CameraScreen>
 
   @override
   Widget build(BuildContext context) {
-    final controller = _controller;
-    return Scaffold(
-      backgroundColor: Colors.black,
-      appBar: AppBar(
-        title: const Text('Fmark Camera'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.layers_outlined),
-            onPressed: _activeProfile == null
-                ? null
-                : () async {
-                    final previewSize = _controller?.value.previewSize;
-                    final fallbackCanvas = previewSize == null
-                        ? _activeProfile?.canvasSize
-                        : WatermarkCanvasSize(
-                            width: previewSize.width,
-                            height: previewSize.height,
-                          );
-                    final selected = await Navigator.of(context).pushNamed(
-                      TemplateManagerScreen.routeName,
-                      arguments: TemplateManagerArguments(
-                        activeProfileId: _activeProfile!.id,
-                        cameraCanvas: fallbackCanvas,
-                      ),
-                    ) as WatermarkProfile?;
-                    if (selected != null) {
-                      setState(() => _activeProfile = selected);
-                      await _persistProfiles();
-                    }
-                  },
+    final controller = _cameraController;
+    if (!_isInitialized || controller == null) {
+      return _buildCameraUnavailable();
+    }
+    return AnimatedBuilder(
+      animation: Listenable.merge([
+        _profilesController,
+        _contextController,
+      ]),
+      builder: (context, _) {
+        final activeProfile = _profilesController.activeProfile;
+        final contextData = _contextController.context;
+        return Scaffold(
+          backgroundColor: Colors.black,
+          appBar: AppBar(
+            title: const Text('Fmark Camera'),
+            actions: [
+              IconButton(
+                tooltip: '管理 Profile',
+                icon: const Icon(Icons.layers_outlined),
+                onPressed: () => Navigator.of(context).pushNamed(
+                  ProfilesScreen.routeName,
+                ),
+              ),
+              IconButton(
+                tooltip: '编辑当前 Profile',
+                icon: const Icon(Icons.edit_outlined),
+                onPressed: activeProfile == null
+                    ? null
+                    : () {
+                        final previewSize = controller.value.previewSize;
+                        Navigator.of(context).pushNamed(
+                          ProfileEditorScreen.routeName,
+                          arguments: ProfileEditorArguments(
+                            profileId: activeProfile.id,
+                            bootstrapper: widget.bootstrapper,
+                            fallbackCanvasSize: previewSize == null
+                                ? activeProfile.canvasSize
+                                : WatermarkCanvasSize(
+                                    width: previewSize.width,
+                                    height: previewSize.height,
+                                  ),
+                          ),
+                        );
+                      },
+              ),
+              IconButton(
+                tooltip: '图库',
+                icon: const Icon(Icons.collections_outlined),
+                onPressed: () =>
+                    Navigator.of(context).pushNamed(GalleryScreen.routeName),
+              ),
+            ],
           ),
-          IconButton(
-            icon: const Icon(Icons.collections_outlined),
-            onPressed: () =>
-                Navigator.of(context).pushNamed(GalleryScreen.routeName),
-          ),
-        ],
-      ),
-      body: !_isInitialized || controller == null
-          ? _buildCameraUnavailable()
-          : AnimatedBuilder(
-              animation: _contextController,
-              builder: (context, _) {
-                return Column(
+          body: Column(
+            children: [
+              Expanded(
+                child: Stack(
                   children: [
-                    Expanded(
-                      child: Stack(
-                        children: [
-                          Center(
-                            child: AspectRatio(
-                              aspectRatio: controller.value.aspectRatio,
-                              child: CameraPreview(controller),
-                            ),
-                          ),
-                          Positioned.fill(
-                            child: _buildWatermarkLayer(
-                                _contextController.context),
-                          ),
-                          Positioned(
-                            left: 16,
-                            top: 16,
-                            child: ContextBadge(
-                                contextData: _contextController.context),
-                          ),
-                        ],
+                    Center(
+                      child: AspectRatio(
+                        aspectRatio: controller.value.aspectRatio,
+                        child: CameraPreview(controller),
                       ),
                     ),
-                    _buildControls(),
+                    if (activeProfile != null)
+                      Positioned.fill(
+                        child: WatermarkCanvasView(
+                          elements: activeProfile.elements,
+                          contextData: contextData,
+                          canvasSize:
+                              activeProfile.canvasSize ?? _fallbackCanvasSize(),
+                        ),
+                      ),
+                    Positioned(
+                      left: 16,
+                      top: 16,
+                      child: _ContextBadge(contextData: contextData),
+                    ),
                   ],
-                );
-              },
-            ),
+                ),
+              ),
+              _buildBottomBar(activeProfile),
+            ],
+          ),
+        );
+      },
     );
   }
 
-  Widget _buildCameraUnavailable() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const CircularProgressIndicator(),
-            const SizedBox(height: 16),
-            const Text(
-              '正在初始化相机或无法访问相机。\n在 Web 上可能不支持或被浏览器拦截。',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.white70),
-            ),
-            const SizedBox(height: 12),
-            ElevatedButton.icon(
-              onPressed: _initializeCamera,
-              icon: const Icon(Icons.refresh),
-              label: const Text('重试'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+  WatermarkCanvasSize _fallbackCanvasSize() =>
+      const WatermarkCanvasSize(width: 1080, height: 1920);
 
-  Widget _buildWatermarkLayer(WatermarkContext contextData) {
-    final profile = _activeProfile;
-    if (profile == null) {
-      return const SizedBox.shrink();
-    }
-    final controller = _controller;
-    final previewSize = controller?.value.previewSize;
-    final defaultCanvasSize = WatermarkCanvasSize(
-      width: previewSize?.width ?? 1080,
-      height: previewSize?.height ?? 1920,
-    );
-    return IgnorePointer(
-      ignoring: !_isEditing,
-      child: WatermarkCanvas(
-        elements: profile.elements,
-        contextData: contextData,
-        selectedElementId: _selectedElementId,
-        isEditing: _isEditing,
-        canvasSize: profile.canvasSize ?? defaultCanvasSize,
-        onElementSelected: (elementId) {
-          setState(() => _selectedElementId = elementId);
-        },
-        onElementChanged: (element) {
-          final updated = profile.elements
-              .map((item) => item.id == element.id ? element : item)
-              .toList();
-          _updateProfile(
-              profile.copyWith(elements: updated, updatedAt: DateTime.now()));
-        },
-        onElementDeleted: (elementId) {
-          final updated = profile.elements
-              .where((element) => element.id != elementId)
-              .toList();
-          _updateProfile(
-              profile.copyWith(elements: updated, updatedAt: DateTime.now()));
-          setState(() => _selectedElementId = null);
-        },
-      ),
-    );
-  }
-
-  Widget _buildControls() {
-    final controller = _controller;
-    final cameraAvailable =
-        controller != null && controller.value.isInitialized;
+  Widget _buildBottomBar(WatermarkProfile? activeProfile) {
+    final controller = _cameraController;
+    final profiles = _profilesController.profiles;
+    final activeId = activeProfile?.id;
     return SafeArea(
+      top: false,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         decoration: BoxDecoration(
-          color: Colors.black.withValues(alpha: 0.45),
+          color: Colors.black.withValues(alpha: 0.55),
           borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Wrap(
-                    spacing: 8,
-                    children: [
-                      _buildAddButton(
-                          label: '时间',
-                          icon: Icons.access_time,
-                          onPressed: () =>
-                              _addElement(WatermarkElementType.time)),
-                      _buildAddButton(
-                          label: '地点',
-                          icon: Icons.place_outlined,
-                          onPressed: () =>
-                              _addElement(WatermarkElementType.location)),
-                      _buildAddButton(
-                          label: '天气',
-                          icon: Icons.wb_sunny_outlined,
-                          onPressed: () =>
-                              _addElement(WatermarkElementType.weather)),
-                      _buildAddButton(
-                          label: '文本',
-                          icon: Icons.text_fields,
-                          onPressed: () =>
-                              _addElement(WatermarkElementType.text)),
-                      _buildAddButton(
-                          label: '图片',
-                          icon: Icons.image_outlined,
-                          onPressed: _addImageElement),
-                    ],
-                  ),
+            if (profiles.length > 1)
+              SizedBox(
+                height: 48,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  itemBuilder: (context, index) {
+                    final profile = profiles[index];
+                    final selected = profile.id == activeId;
+                    return ChoiceChip(
+                      label: Text(profile.name),
+                      selected: selected,
+                      onSelected: (_) =>
+                          _profilesController.setActive(profile.id),
+                    );
+                  },
+                  separatorBuilder: (_, __) => const SizedBox(width: 8),
+                  itemCount: profiles.length,
                 ),
-                IconButton(
-                  onPressed: () => setState(() => _isEditing = !_isEditing),
-                  icon: Icon(_isEditing
-                      ? Icons.visibility_off_outlined
-                      : Icons.edit_outlined),
-                  color: Colors.white,
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
+              ),
+            if (profiles.length > 1) const SizedBox(height: 12),
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
@@ -341,9 +252,9 @@ class _CameraScreenState extends State<CameraScreen>
                 const SizedBox(width: 24),
                 GestureDetector(
                   behavior: HitTestBehavior.opaque,
-                  onTap: cameraAvailable
-                      ? (_isVideoMode ? _toggleVideoRecording : _capturePhoto)
-                      : null,
+                  onTap: controller == null
+                      ? null
+                      : (_isVideoMode ? _toggleVideoRecording : _capturePhoto),
                   child: Container(
                     width: 72,
                     height: 72,
@@ -367,8 +278,10 @@ class _CameraScreenState extends State<CameraScreen>
                 ),
                 const SizedBox(width: 24),
                 IconButton(
-                  icon: Icon(_isVideoMode ? Icons.videocam : Icons.camera,
-                      color: Colors.white),
+                  icon: Icon(
+                    _isVideoMode ? Icons.videocam : Icons.camera,
+                    color: Colors.white,
+                  ),
                   onPressed: () => setState(() => _isVideoMode = !_isVideoMode),
                 ),
               ],
@@ -379,201 +292,120 @@ class _CameraScreenState extends State<CameraScreen>
     );
   }
 
-  Widget _buildAddButton(
-      {required String label,
-      required IconData icon,
-      required VoidCallback onPressed}) {
-    return ElevatedButton.icon(
-      style: ElevatedButton.styleFrom(
-        backgroundColor: Colors.white.withValues(alpha: 0.1),
-        foregroundColor: Colors.white,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+  Widget _buildCameraUnavailable() {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const CircularProgressIndicator(),
+              const SizedBox(height: 16),
+              const Text(
+                '正在初始化相机或无法访问相机。\n在 Web 上可能不支持或被浏览器拦截。',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.white70),
+              ),
+              const SizedBox(height: 12),
+              ElevatedButton.icon(
+                onPressed: _initializeCamera,
+                icon: const Icon(Icons.refresh),
+                label: const Text('重试'),
+              ),
+            ],
+          ),
+        ),
       ),
-      onPressed: onPressed,
-      icon: Icon(icon, size: 18),
-      label: Text(label),
     );
   }
 
   Future<void> _switchCamera() async {
-    if (_cameras.length < 2) {
+    if (_availableCameras.length < 2) {
       return;
     }
-    final controller = _controller;
+    final controller = _cameraController;
     if (controller == null) {
       return;
     }
-    final currentIndex = _cameras.indexOf(controller.description);
-    final nextIndex = (currentIndex + 1) % _cameras.length;
-    final nextCamera = _cameras[nextIndex];
+    final currentIndex = _availableCameras.indexOf(controller.description);
+    final nextIndex = (currentIndex + 1) % _availableCameras.length;
+    final nextCamera = _availableCameras[nextIndex];
     final newController =
         CameraController(nextCamera, ResolutionPreset.high, enableAudio: true);
     await newController.initialize();
     await controller.dispose();
-    await _syncProfileCanvasSize(newController.value.previewSize);
+    await _profilesController.ensureCanvasSize(
+      WatermarkCanvasSize(
+        width: newController.value.previewSize?.width ?? 1080,
+        height: newController.value.previewSize?.height ?? 1920,
+      ),
+    );
     setState(() {
-      _controller = newController;
+      _cameraController = newController;
     });
   }
 
-  Future<void> _addElement(WatermarkElementType type) async {
-    final profile = _activeProfile;
-    if (profile == null) {
-      return;
-    }
-    if (type == WatermarkElementType.image) {
-      await _addImageElement();
-      return;
-    }
-    WatermarkElement element;
-    switch (type) {
-      case WatermarkElementType.text:
-        element = WatermarkElement(
-          id: _uuid.v4(),
-          type: type,
-          transform: const WatermarkTransform(
-              position: Offset(0.5, 0.5), scale: 1, rotation: 0),
-          payload: const WatermarkElementPayload(text: '自定义文本'),
-        );
-        break;
-      case WatermarkElementType.time:
-        element = WatermarkElement(
-          id: _uuid.v4(),
-          type: type,
-          transform: const WatermarkTransform(
-              position: Offset(0.5, 0.2), scale: 1, rotation: 0),
-        );
-        break;
-      case WatermarkElementType.location:
-        element = WatermarkElement(
-          id: _uuid.v4(),
-          type: type,
-          transform: const WatermarkTransform(
-              position: Offset(0.5, 0.3), scale: 1, rotation: 0),
-        );
-        break;
-      case WatermarkElementType.weather:
-        element = WatermarkElement(
-          id: _uuid.v4(),
-          type: type,
-          transform: const WatermarkTransform(
-              position: Offset(0.5, 0.4), scale: 1, rotation: 0),
-        );
-        break;
-      case WatermarkElementType.image:
-        return;
-    }
-    final updated = [...profile.elements, element];
-    _updateProfile(
-        profile.copyWith(elements: updated, updatedAt: DateTime.now()));
-    setState(() => _selectedElementId = element.id);
-  }
-
-  Future<void> _addImageElement() async {
-    final picker = ImagePicker();
-    final file =
-        await picker.pickImage(source: ImageSource.gallery, imageQuality: 90);
-    if (file == null) {
-      return;
-    }
-    final profile = _activeProfile;
-    if (profile == null) {
-      return;
-    }
-    try {
-      final payload = kIsWeb
-          ? WatermarkElementPayload(
-              imageBytesBase64: base64Encode(await file.readAsBytes()),
-              imagePath: '',
-            )
-          : WatermarkElementPayload(
-              imagePath: file.path,
-              imageBytesBase64: '',
-            );
-      final element = WatermarkElement(
-        id: _uuid.v4(),
-        type: WatermarkElementType.image,
-        transform: const WatermarkTransform(
-            position: Offset(0.5, 0.5), scale: 1, rotation: 0),
-        payload: payload,
-      );
-      final updated = [...profile.elements, element];
-      _updateProfile(
-          profile.copyWith(elements: updated, updatedAt: DateTime.now()));
-      setState(() => _selectedElementId = element.id);
-    } catch (_) {
-      if (!mounted) {
-        return;
-      }
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('图片导入失败，请重试')),
-      );
-    }
-  }
-
   Future<void> _capturePhoto() async {
-    final controller = _controller;
-    final profile = _activeProfile;
-    if (controller == null ||
-        profile == null ||
-        controller.value.isTakingPicture) {
+    final controller = _cameraController;
+    final profile = _profilesController.activeProfile;
+    if (controller == null || profile == null) {
       return;
     }
     final file = await controller.takePicture();
-    await _saveProject(
+    await _storeCapture(
       path: file.path,
       mediaType: WatermarkMediaType.photo,
       previewSize: controller.value.previewSize,
-      previewAspectRatio: controller.value.aspectRatio,
+      aspectRatio: controller.value.aspectRatio,
+      profile: profile,
     );
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('照片已保存，可在图库中导出水印版本')),
-      );
+    if (!mounted) {
+      return;
     }
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('照片已保存，可在图库中导出水印版本')),
+    );
   }
 
   Future<void> _toggleVideoRecording() async {
-    final controller = _controller;
-    if (controller == null) {
+    final controller = _cameraController;
+    final profile = _profilesController.activeProfile;
+    if (controller == null || profile == null) {
       return;
     }
     if (_isRecording) {
       final file = await controller.stopVideoRecording();
       setState(() => _isRecording = false);
-      await _saveProject(
+      await _storeCapture(
         path: file.path,
         mediaType: WatermarkMediaType.video,
         previewSize: controller.value.previewSize,
-        previewAspectRatio: controller.value.aspectRatio,
+        aspectRatio: controller.value.aspectRatio,
+        profile: profile,
       );
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('视频已保存，可在图库中导出水印版本')),
-        );
+      if (!mounted) {
+        return;
       }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('视频已保存，可在图库中导出水印版本')),
+      );
     } else {
       await controller.startVideoRecording();
       setState(() => _isRecording = true);
     }
   }
 
-  Future<void> _saveProject({
+  Future<void> _storeCapture({
     required String path,
     required WatermarkMediaType mediaType,
     required Size? previewSize,
-    double? previewAspectRatio,
+    required double aspectRatio,
+    required WatermarkProfile profile,
   }) async {
-    final profile = _activeProfile;
-    if (profile == null) {
-      return;
-    }
     final contextData = _contextController.context;
-    final size = previewSize ?? const Size(1080, 1920);
-    final canvasSize = WatermarkCanvasSize(
-      width: size.width,
-      height: size.height,
-    );
+    final canvasSize = profile.canvasSize ?? _fallbackCanvasSize();
     String? overlayPath;
     try {
       final bytes = await _renderer.renderToBytes(
@@ -582,12 +414,12 @@ class _CameraScreenState extends State<CameraScreen>
         canvasSize: canvasSize.toSize(),
       );
       if (!kIsWeb) {
-        final overlayFile = await _exporter.saveOverlayBytes(bytes);
-        overlayPath = overlayFile;
+        overlayPath = await _exporter.saveOverlayBytes(bytes);
       }
     } catch (_) {
       overlayPath = null;
     }
+
     final project = WatermarkProject(
       id: _uuid.v4(),
       mediaPath: path,
@@ -595,61 +427,52 @@ class _CameraScreenState extends State<CameraScreen>
       capturedAt: DateTime.now(),
       profileId: profile.id,
       canvasSize: canvasSize,
-      previewRatio: previewAspectRatio ?? (size.width / size.height),
+      previewRatio: aspectRatio,
       overlayPath: overlayPath,
     );
-    final updatedProjects = [..._projects, project];
-    await _projectRepository.saveProjects(updatedProjects);
-    setState(() => _projects = updatedProjects);
+    await _projectsController.addProject(project);
   }
+}
 
-  Future<void> _syncProfileCanvasSize(Size? previewSize) async {
-    if (previewSize == null) {
-      return;
-    }
-    final canvasSize = WatermarkCanvasSize(
-      width: previewSize.width,
-      height: previewSize.height,
+class _ContextBadge extends StatelessWidget {
+  const _ContextBadge({required this.contextData});
+
+  final WatermarkContext contextData;
+
+  @override
+  Widget build(BuildContext context) {
+    final location = contextData.location;
+    final weather = contextData.weather;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.65),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              DateFormat('yyyy-MM-dd HH:mm').format(contextData.now),
+              style: const TextStyle(color: Colors.white, fontSize: 12),
+            ),
+            if (location != null)
+              Text(
+                location.address ??
+                    location.city ??
+                    '${location.latitude.toStringAsFixed(2)}, ${location.longitude.toStringAsFixed(2)}',
+                style: const TextStyle(color: Colors.white70, fontSize: 12),
+              ),
+            if (weather != null)
+              Text(
+                '${weather.temperatureCelsius.toStringAsFixed(1)}°C ${weather.description ?? ''}',
+                style: const TextStyle(color: Colors.white70, fontSize: 12),
+              ),
+          ],
+        ),
+      ),
     );
-    bool changed = false;
-    final updated = _profiles
-        .map((profile) => profile.canvasSize == null
-            ? (() {
-                changed = true;
-                return profile.copyWith(
-                  canvasSize: canvasSize,
-                  updatedAt: DateTime.now(),
-                );
-              })()
-            : profile)
-        .toList();
-    if (!changed) {
-      return;
-    }
-    setState(() {
-      _profiles = updated;
-      if (_activeProfile != null) {
-        _activeProfile = updated.firstWhere(
-          (item) => item.id == _activeProfile!.id,
-          orElse: () => updated.first,
-        );
-      }
-    });
-    await _profileRepository.saveProfiles(updated);
-  }
-
-  Future<void> _updateProfile(WatermarkProfile profile) async {
-    final profiles = _profiles
-        .map((item) => item.id == profile.id ? profile : item)
-        .toList();
-    await _profileRepository.saveProfiles(profiles);
-    setState(() {
-      _profiles = profiles;
-      _activeProfile = profile;
-    });
-  }
-
-  Future<void> _persistProfiles() async {
-    await _profileRepository.saveProfiles(_profiles);
   }
 }

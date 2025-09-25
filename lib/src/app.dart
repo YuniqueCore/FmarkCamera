@@ -2,8 +2,9 @@ import 'package:flutter/material.dart';
 
 import 'package:fmark_camera/src/presentation/camera/camera_screen.dart';
 import 'package:fmark_camera/src/presentation/gallery/gallery_screen.dart';
+import 'package:fmark_camera/src/presentation/profiles/profile_editor_screen.dart';
+import 'package:fmark_camera/src/presentation/profiles/profiles_screen.dart';
 import 'package:fmark_camera/src/presentation/settings/settings_screen.dart';
-import 'package:fmark_camera/src/presentation/templates/template_manager_screen.dart';
 import 'package:fmark_camera/src/services/bootstrapper.dart';
 
 class FmarkCameraApp extends StatefulWidget {
@@ -46,8 +47,23 @@ class _FmarkCameraAppState extends State<FmarkCameraApp> {
       ),
       home: CameraScreen(bootstrapper: _bootstrapper),
       routes: {
-        TemplateManagerScreen.routeName: (_) =>
-            TemplateManagerScreen(bootstrapper: _bootstrapper),
+        ProfilesScreen.routeName: (context) =>
+            ProfilesScreen(bootstrapper: _bootstrapper),
+        ProfileEditorScreen.routeName: (context) {
+          final args = ModalRoute.of(context)?.settings.arguments;
+          if (args is ProfileEditorArguments) {
+            return ProfileEditorScreen(arguments: args);
+          }
+          final fallback = _bootstrapper.profilesController.activeProfile ??
+              _bootstrapper.profilesController.profiles.first;
+          return ProfileEditorScreen(
+            arguments: ProfileEditorArguments(
+              profileId: fallback.id,
+              bootstrapper: _bootstrapper,
+              fallbackCanvasSize: fallback.canvasSize,
+            ),
+          );
+        },
         GalleryScreen.routeName: (_) =>
             GalleryScreen(bootstrapper: _bootstrapper),
         SettingsScreen.routeName: (_) =>

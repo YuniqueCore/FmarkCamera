@@ -1,7 +1,7 @@
-import 'dart:io' show File;
-import 'package:flutter/foundation.dart';
 import 'dart:convert';
+import 'dart:io' show File;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -10,40 +10,79 @@ import 'package:fmark_camera/src/domain/models/watermark_element.dart';
 import 'package:fmark_camera/src/domain/models/watermark_profile.dart';
 import 'package:fmark_camera/src/domain/models/watermark_transform.dart';
 
-typedef TransformChanged = void Function(WatermarkTransform transform);
-typedef OpacityChanged = void Function(double opacity);
-typedef ElementDeleted = void Function();
-typedef ElementSelected = void Function();
+/// 只读水印元素，用于相机实时叠加与图库预览。
+class WatermarkElementView extends StatelessWidget {
+  const WatermarkElementView({
+    super.key,
+    required this.element,
+    required this.contextData,
+    required this.canvasSize,
+  });
 
-class WatermarkElementWidget extends StatefulWidget {
-  const WatermarkElementWidget({
+  final WatermarkElement element;
+  final WatermarkContext contextData;
+  final WatermarkCanvasSize canvasSize;
+
+  @override
+  Widget build(BuildContext context) {
+    final position = element.transform.position;
+    final size = canvasSize.toSize();
+    final left = position.dx * size.width;
+    final top = position.dy * size.height;
+    return Positioned(
+      left: left,
+      top: top,
+      child: FractionalTranslation(
+        translation: const Offset(-0.5, -0.5),
+        child: Transform.rotate(
+          angle: element.transform.rotation,
+          alignment: Alignment.center,
+          child: Transform.scale(
+            scale: element.transform.scale,
+            alignment: Alignment.center,
+            child: Opacity(
+              opacity: element.opacity,
+              child: _WatermarkElementContent(
+                element: element,
+                contextData: contextData,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 可编辑水印元素，支持拖拽/缩放/旋转。
+class EditableWatermarkElement extends StatefulWidget {
+  const EditableWatermarkElement({
     super.key,
     required this.element,
     required this.contextData,
     required this.canvasSize,
     required this.onTransform,
     required this.selected,
-    required this.isEditing,
-    this.onOpacityChanged,
     this.onDelete,
     this.onSelected,
+    this.isLocked = false,
   });
 
   final WatermarkElement element;
   final WatermarkContext contextData;
   final WatermarkCanvasSize canvasSize;
-  final TransformChanged onTransform;
-  final OpacityChanged? onOpacityChanged;
-  final ElementDeleted? onDelete;
-  final ElementSelected? onSelected;
+  final ValueChanged<WatermarkTransform> onTransform;
   final bool selected;
-  final bool isEditing;
+  final VoidCallback? onDelete;
+  final VoidCallback? onSelected;
+  final bool isLocked;
 
   @override
-  State<WatermarkElementWidget> createState() => _WatermarkElementWidgetState();
+  State<EditableWatermarkElement> createState() =>
+      _EditableWatermarkElementState();
 }
 
-class _WatermarkElementWidgetState extends State<WatermarkElementWidget> {
+class _EditableWatermarkElementState extends State<EditableWatermarkElement> {
   late Offset _currentPosition;
   late double _initialScale;
   late double _initialRotation;
@@ -56,7 +95,7 @@ class _WatermarkElementWidgetState extends State<WatermarkElementWidget> {
   }
 
   @override
-  void didUpdateWidget(covariant WatermarkElementWidget oldWidget) {
+  void didUpdateWidget(covariant EditableWatermarkElement oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.element.id != widget.element.id ||
         oldWidget.element.transform != widget.element.transform) {
@@ -72,7 +111,7 @@ class _WatermarkElementWidgetState extends State<WatermarkElementWidget> {
   }
 
   void _onScaleStart(ScaleStartDetails details) {
-    if (widget.element.isLocked) {
+    if (widget.isLocked) {
       return;
     }
     _syncFromWidget();
@@ -81,7 +120,7 @@ class _WatermarkElementWidgetState extends State<WatermarkElementWidget> {
   }
 
   void _onScaleUpdate(ScaleUpdateDetails details) {
-    if (widget.element.isLocked) {
+    if (widget.isLocked) {
       return;
     }
     final canvasSize = widget.canvasSize.toSize();
@@ -120,43 +159,38 @@ class _WatermarkElementWidgetState extends State<WatermarkElementWidget> {
     final size = widget.canvasSize.toSize();
     final left = position.dx * size.width;
     final top = position.dy * size.height;
-    final content = _buildContent();
-
-    final child = Transform.rotate(
-      angle: widget.element.transform.rotation,
-      alignment: Alignment.center,
-      child: Transform.scale(
-        scale: widget.element.transform.scale,
-        alignment: Alignment.center,
-        child: Opacity(
-          opacity: widget.element.opacity,
-          child: content,
-        ),
-      ),
-    );
-
-    Widget result = Positioned(
+    return Positioned(
       left: left,
       top: top,
       child: GestureDetector(
         behavior: HitTestBehavior.translucent,
         onTap: widget.onSelected,
         onTapDown: (_) => widget.onSelected?.call(),
-        onScaleStart:
-            widget.isEditing && !widget.element.isLocked ? _onScaleStart : null,
-        onScaleUpdate: widget.isEditing && !widget.element.isLocked
-            ? _onScaleUpdate
-            : null,
-        onScaleEnd:
-            widget.isEditing && !widget.element.isLocked ? _onScaleEnd : null,
+        onScaleStart: widget.isLocked ? null : _onScaleStart,
+        onScaleUpdate: widget.isLocked ? null : _onScaleUpdate,
+        onScaleEnd: widget.isLocked ? null : _onScaleEnd,
         child: Stack(
           clipBehavior: Clip.none,
           children: [
             FractionalTranslation(
               translation: const Offset(-0.5, -0.5),
-              child: child,
+              child: Transform.rotate(
+                angle: widget.element.transform.rotation,
+                alignment: Alignment.center,
+                child: Transform.scale(
+                  scale: widget.element.transform.scale,
+                  alignment: Alignment.center,
+                  child: Opacity(
+                    opacity: widget.element.opacity,
+                    child: _WatermarkElementContent(
+                      element: widget.element,
+                      contextData: widget.contextData,
+                    ),
+                  ),
+                ),
+              ),
             ),
-            if (widget.selected && widget.isEditing)
+            if (widget.selected)
               Positioned.fill(
                 child: DecoratedBox(
                   decoration: BoxDecoration(
@@ -164,7 +198,7 @@ class _WatermarkElementWidgetState extends State<WatermarkElementWidget> {
                   ),
                 ),
               ),
-            if (widget.selected && widget.isEditing && widget.onDelete != null)
+            if (widget.selected && widget.onDelete != null)
               Positioned(
                 top: -32,
                 right: -32,
@@ -182,28 +216,36 @@ class _WatermarkElementWidgetState extends State<WatermarkElementWidget> {
         ),
       ),
     );
-
-    return result;
   }
+}
 
-  Widget _buildContent() {
-    switch (widget.element.type) {
+class _WatermarkElementContent extends StatelessWidget {
+  const _WatermarkElementContent({
+    required this.element,
+    required this.contextData,
+  });
+
+  final WatermarkElement element;
+  final WatermarkContext contextData;
+
+  @override
+  Widget build(BuildContext context) {
+    switch (element.type) {
       case WatermarkElementType.text:
-        return _buildText(widget.element.payload.text ?? '文本',
-            align: TextAlign.center);
+        return _buildText(element.payload.text ?? '文本', TextAlign.center);
       case WatermarkElementType.time:
-        return _buildText(_formatTime(), align: TextAlign.left);
+        return _buildText(_formatTime(), TextAlign.left);
       case WatermarkElementType.location:
-        return _buildText(_formatLocation(), align: TextAlign.left);
+        return _buildText(_formatLocation(), TextAlign.left);
       case WatermarkElementType.weather:
-        return _buildText(_formatWeather(), align: TextAlign.left);
+        return _buildText(_formatWeather(), TextAlign.left);
       case WatermarkElementType.image:
         return _buildImage();
     }
   }
 
-  Widget _buildText(String text, {required TextAlign align}) {
-    final style = widget.element.textStyle?.asTextStyle() ??
+  Widget _buildText(String text, TextAlign align) {
+    final style = element.textStyle?.asTextStyle() ??
         const TextStyle(
           fontSize: 16,
           color: Colors.white,
@@ -224,9 +266,9 @@ class _WatermarkElementWidgetState extends State<WatermarkElementWidget> {
   }
 
   Widget _buildImage() {
-    final asset = widget.element.payload.assetName;
-    final filePath = widget.element.payload.imagePath;
-    final base64Bytes = widget.element.payload.imageBytesBase64;
+    final asset = element.payload.assetName;
+    final filePath = element.payload.imagePath;
+    final base64Bytes = element.payload.imageBytesBase64;
     Widget? image;
     if (asset != null && asset.isNotEmpty) {
       image = Image.asset(asset, width: 96, height: 96, fit: BoxFit.contain);
@@ -271,38 +313,39 @@ class _WatermarkElementWidgetState extends State<WatermarkElementWidget> {
 
   String _formatTime() {
     final formatter =
-        DateFormat(widget.element.payload.timeFormat ?? 'yyyy-MM-dd HH:mm:ss');
-    return formatter.format(widget.contextData.now);
+        DateFormat(element.payload.timeFormat ?? 'yyyy-MM-dd HH:mm:ss');
+    return formatter.format(contextData.now);
   }
 
   String _formatLocation() {
-    final location = widget.contextData.location;
+    final location = contextData.location;
     if (location == null) {
       return '定位中...';
     }
     final buffer = StringBuffer();
-    if (widget.element.payload.showAddress && location.address != null) {
+    if (element.payload.showAddress && location.address != null) {
       buffer.write(location.address);
     } else if (location.city != null) {
       buffer.write(location.city);
     }
-    if (widget.element.payload.showCoordinates) {
+    if (element.payload.showCoordinates) {
       if (buffer.isNotEmpty) {
         buffer.write(' ');
       }
       buffer.write(
-          '${location.latitude.toStringAsFixed(4)}, ${location.longitude.toStringAsFixed(4)}');
+        '${location.latitude.toStringAsFixed(4)}, ${location.longitude.toStringAsFixed(4)}',
+      );
     }
     return buffer.isEmpty ? '定位未获取' : buffer.toString();
   }
 
   String _formatWeather() {
-    final weather = widget.contextData.weather;
+    final weather = contextData.weather;
     if (weather == null) {
       return '天气获取中...';
     }
     final temperature = '${weather.temperatureCelsius.toStringAsFixed(1)}°C';
-    if (!widget.element.payload.showWeatherDescription ||
+    if (!element.payload.showWeatherDescription ||
         weather.description == null) {
       return temperature;
     }

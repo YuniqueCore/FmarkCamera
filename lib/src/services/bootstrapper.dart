@@ -7,6 +7,8 @@ import 'package:fmark_camera/src/services/location_service.dart';
 import 'package:fmark_camera/src/services/watermark_context_controller.dart';
 import 'package:fmark_camera/src/services/watermark_exporter.dart';
 import 'package:fmark_camera/src/services/watermark_exporter_factory.dart';
+import 'package:fmark_camera/src/services/watermark_profiles_controller.dart';
+import 'package:fmark_camera/src/services/watermark_projects_controller.dart';
 import 'package:fmark_camera/src/services/watermark_renderer.dart';
 import 'package:fmark_camera/src/services/weather_service.dart';
 
@@ -19,6 +21,8 @@ class Bootstrapper {
   late final LocationService locationService;
   late final WeatherService weatherService;
   late final WatermarkContextController contextController;
+  late final WatermarkProfilesController profilesController;
+  late final WatermarkProjectsController projectsController;
   late final WatermarkRenderer renderer;
   late final WatermarkExporter exporter;
 
@@ -35,7 +39,12 @@ class Bootstrapper {
     );
     renderer = WatermarkRenderer();
     exporter = WatermarkExporterFactory.create();
-    await profileRepository.loadProfiles();
+    profilesController =
+        WatermarkProfilesController(repository: profileRepository);
+    await profilesController.load();
+    projectsController =
+        WatermarkProjectsController(repository: projectRepository);
+    await projectsController.load();
     await contextController.start();
   }
 }
