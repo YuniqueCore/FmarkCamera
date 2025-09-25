@@ -1,5 +1,6 @@
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:uuid/uuid.dart';
@@ -73,17 +74,21 @@ class _CameraScreenState extends State<CameraScreen>
     setState(() {
       _profiles = profiles;
       _projects = projects;
-      _activeProfile = profiles.firstWhere(
-        (profile) => profile.isDefault,
-        orElse: () => profiles.isNotEmpty ? profiles.first : null,
-      );
+      _activeProfile = profiles.isNotEmpty
+          ? profiles.firstWhere(
+              (profile) => profile.isDefault,
+              orElse: () => profiles.first,
+            )
+          : null;
     });
   }
 
   Future<void> _initializeCamera() async {
-    final permission = await Permission.camera.request();
-    if (!permission.isGranted) {
-      return;
+    if (!kIsWeb) {
+      final permission = await Permission.camera.request();
+      if (!permission.isGranted) {
+        return;
+      }
     }
     _cameras = await availableCameras();
     if (_cameras.isEmpty) {

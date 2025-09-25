@@ -7,6 +7,49 @@
 6. 实现图片与视频导出逻辑，保持水印配置分层保存。
 7. 整体联调，补充必要的工具类和界面导航。
 
+##  platform
+
+web should make this application works on android, web, macOS.
+but currently I have not install the android studio but I have connect the physical android instead.
+So, if you want to debug on android, please the physical android device, but currently, please fix issues and build it on web firstly now.
+
+unic@unicM3Air ~/d/f/FmarkCamera (dev-fix)> flutter doctor
+Doctor summary (to see all details, run flutter doctor -v):
+[✓] Flutter (Channel stable, 3.35.4, on macOS 26.0 25A354 darwin-arm64, locale en-CN)
+[✗] Android toolchain - develop for Android devices
+    ✗ cmdline-tools component is missing.
+      Try installing or updating Android Studio.
+      Alternatively, download the tools from https://developer.android.com/studio#command-line-tools-only and make
+      sure to set the ANDROID_HOME environment variable.
+      See https://developer.android.com/studio/command-line for more details.
+[!] Xcode - develop for iOS and macOS (Xcode 26.0.1)
+    ✗ Unable to get list of installed Simulator runtimes.
+[✓] Chrome - develop for the web
+[!] Android Studio (not installed)
+[✓] VS Code (version 1.104.1)
+[✓] Connected device (3 available)
+[✓] Network resources
+
+! Doctor found issues in 3 categories.
+
+unic@unicM3Air ~/d/f/FmarkCamera (main)> flutter devices
+Found 2 connected devices:
+  macOS (desktop) • macos  • darwin-arm64   • macOS 26.0 25A354 darwin-arm64
+  Chrome (web)    • chrome • web-javascript • Google Chrome 140.0.7339.208
+
+Found 1 wirelessly connected device:
+  2112123AC (wireless) (mobile) • adb-97796444-LV36cT._adb-tls-connect._tcp • android-arm64 • Android 13 (API 33)
+
+Run "flutter emulators" to list and start any available device emulators.
+
+If you expected another device to be detected, please run "flutter doctor" to diagnose potential issues. You may
+also try increasing the time to wait for connected devices with the "--device-timeout" flag. Visit
+https://flutter.dev/setup/ for troubleshooting tips.
+
+I have not install the android studio but I have connect the physical android instead.
+
+So, if you want to debug on android, please the physical android device, but currently, please fix issues and build it on web firstly now.
+
 
 ## Current issues
 [{
