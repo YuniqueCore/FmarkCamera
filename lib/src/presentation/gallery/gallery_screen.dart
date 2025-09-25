@@ -508,22 +508,9 @@ class _ProjectDetailScreenState extends State<_ProjectDetailScreen> {
       return;
     }
     if (result == null) {
-      await showDialog<void>(
-        context: context,
-        builder: (_) => AlertDialog(
-          title: const Text('导出不可用'),
-          content: Text(
-            _project.mediaType == WatermarkMediaType.photo
-                ? '当前平台无法直接导出原始照片，请手动下载源文件或在移动端导出。'
-                : '当前平台无法直接导出原始视频，请手动下载源文件或在移动端导出。',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('好的'),
-            )
-          ],
-        ),
+      await _showWebExportLimitationDialog(
+        isVideo: _project.mediaType == WatermarkMediaType.video,
+        feature: '原始文件导出',
       );
     } else {
       _showSuccessSnack('原始文件已导出：$result');
@@ -659,10 +646,11 @@ class _ProjectDetailScreenState extends State<_ProjectDetailScreen> {
       return;
     }
     if (resultPath == null) {
-      _showUnsupportedSnack(
-        _project.mediaType == WatermarkMediaType.photo
-            ? '当前平台暂不支持导出带水印照片，请在移动/桌面端完成导出。'
-            : '当前平台暂不支持导出带水印视频，请在移动/桌面端完成导出。',
+      await _showWebExportLimitationDialog(
+        isVideo: _project.mediaType == WatermarkMediaType.video,
+        feature: _project.mediaType == WatermarkMediaType.photo 
+            ? '带水印照片合成' 
+            : '带水印视频合成',
       );
     } else {
       _showSuccessSnack('导出成功：$resultPath');
@@ -672,6 +660,95 @@ class _ProjectDetailScreenState extends State<_ProjectDetailScreen> {
   void _showUnsupportedSnack(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message)),
+    );
+  }
+
+  Future<void> _showWebExportLimitationDialog({
+    required bool isVideo,
+    required String feature,
+  }) async {
+    final isOriginalFile = feature.contains('原始文件');
+    final isComposite = feature.contains('合成');
+    
+    return showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(
+              Icons.info_outline,
+              color: Theme.of(context).primaryColor,
+            ),
+            const SizedBox(width: 8),
+            Text('${isVideo ? '视频' : '照片'}导出限制'),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '由于浏览器安全限制，Web 端暂不支持 $feature。',
+                style: const TextStyle(fontWeight: FontWeight.w500),
+              ),
+              const SizedBox(height: 12),
+              const Text('替代方案：', style: TextStyle(fontWeight: FontWeight.w500)),
+              const SizedBox(height: 8),
+              if (isOriginalFile) ...[
+                const Text('• 通过相机应用直接访问拍摄的文件'),
+                const Text('• 在移动端或桌面端安装应用完成导出'),
+                const Text('• 使用文件管理器直接访问媒体文件'),
+              ] else if (isComposite && isVideo) ...[
+                const Text('• 在移动端或桌面端安装应用完成视频导出'),
+                const Text('• 下载原始视频文件，使用专业视频编辑软件添加水印'),
+                const Text('• 导出水印 PNG 图层，手动合成'),
+              ] else if (isComposite && !isVideo) ...[
+                const Text('• 在移动端或桌面端安装应用完成照片导出'),
+                const Text('• 使用截图功能保存当前预览'),
+                const Text('• 导出水印 PNG 图层，使用图片编辑软件合成'),
+              ],
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.blue.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.blue.withValues(alpha: 0.3)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.lightbulb_outline, size: 16, color: Colors.blue),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        isOriginalFile 
+                            ? '建议在移动端使用应用以获得完整功能体验'
+                            : '您可以单独导出水印 PNG 图层，然后使用其他工具进行合成',
+                        style: const TextStyle(fontSize: 12, color: Colors.blue),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('我知道了'),
+          ),
+          if (isComposite && !isVideo)
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                _exportWatermarkOnly();
+              },
+              child: const Text('导出水印 PNG'),
+            ),
+        ],
+      ),
     );
   }
 

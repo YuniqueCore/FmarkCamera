@@ -30,7 +30,6 @@ class ProjectFileRepository implements ProjectRepository {
     );
   }
 
-  @override
   Future<void> invalidateCache() async {
     _cache = null;
   }
