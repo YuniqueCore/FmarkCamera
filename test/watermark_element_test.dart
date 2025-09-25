@@ -33,10 +33,10 @@ void main() {
     });
 
     test('creates location element with proper type', () {
-      final element = WatermarkElement(
+      final element = const WatermarkElement(
         id: 'location-id',
         type: WatermarkElementType.location,
-        transform: const WatermarkTransform(
+        transform: WatermarkTransform(
           position: Offset(0.1, 0.9),
           scale: 0.8,
           rotation: 0.0,
@@ -49,10 +49,10 @@ void main() {
     });
 
     test('creates time element with proper type', () {
-      final element = WatermarkElement(
+      final element = const WatermarkElement(
         id: 'time-id',
         type: WatermarkElementType.time,
-        transform: const WatermarkTransform(
+        transform: WatermarkTransform(
           position: Offset(0.9, 0.1),
           scale: 1.2,
           rotation: 0.0,
@@ -64,10 +64,10 @@ void main() {
     });
 
     test('creates weather element with proper type', () {
-      final element = WatermarkElement(
+      final element = const WatermarkElement(
         id: 'weather-id',
         type: WatermarkElementType.weather,
-        transform: const WatermarkTransform(
+        transform: WatermarkTransform(
           position: Offset(0.5, 0.1),
           scale: 1.0,
           rotation: 45.0,
@@ -79,15 +79,15 @@ void main() {
     });
 
     test('creates image element with payload', () {
-      final element = WatermarkElement(
+      final element = const WatermarkElement(
         id: 'image-id',
         type: WatermarkElementType.image,
-        transform: const WatermarkTransform(
+        transform: WatermarkTransform(
           position: Offset(0.2, 0.8),
           scale: 0.5,
           rotation: 0.0,
         ),
-        payload: const WatermarkElementPayload(imagePath: '/path/to/image.png'),
+        payload: WatermarkElementPayload(imagePath: '/path/to/image.png'),
       );
 
       expect(element.type, WatermarkElementType.image);
@@ -98,16 +98,16 @@ void main() {
 
   group('WatermarkElement JSON serialization', () {
     test('serializes and deserializes text element correctly', () {
-      final original = WatermarkElement(
+      final original = const WatermarkElement(
         id: 'text-1',
         type: WatermarkElementType.text,
-        transform: const WatermarkTransform(
+        transform: WatermarkTransform(
           position: Offset(0.3, 0.7),
           scale: 1.5,
           rotation: 30.0,
         ),
-        payload: const WatermarkElementPayload(text: 'Test Text'),
-        textStyle: const WatermarkTextStyle(
+        payload: WatermarkElementPayload(text: 'Test Text'),
+        textStyle: WatermarkTextStyle(
           fontSize: 18,
           color: Color(0xFF123456),
           fontWeight: FontWeight.bold,
@@ -128,15 +128,15 @@ void main() {
     });
 
     test('serializes and deserializes image element correctly', () {
-      final original = WatermarkElement(
+      final original = const WatermarkElement(
         id: 'image-1',
         type: WatermarkElementType.image,
-        transform: const WatermarkTransform(
+        transform: WatermarkTransform(
           position: Offset(0.8, 0.2),
           scale: 0.75,
           rotation: -15.0,
         ),
-        payload: const WatermarkElementPayload(
+        payload: WatermarkElementPayload(
           imagePath: '/storage/images/logo.png',
         ),
       );
@@ -150,10 +150,10 @@ void main() {
     });
 
     test('handles null payload gracefully', () {
-      final original = WatermarkElement(
+      final original = const WatermarkElement(
         id: 'time-1',
         type: WatermarkElementType.time,
-        transform: const WatermarkTransform(
+        transform: WatermarkTransform(
           position: Offset(0.5, 0.5),
           scale: 1.0,
           rotation: 0.0,
@@ -238,34 +238,34 @@ void main() {
   group('WatermarkElementPayload handling', () {
     test('creates text payload correctly', () {
       const payload = WatermarkElementPayload(text: 'Sample Text');
-      
+
       expect(payload.text, 'Sample Text');
       expect(payload.imagePath, isNull);
     });
 
     test('creates image payload correctly', () {
       const payload = WatermarkElementPayload(imagePath: '/path/image.jpg');
-      
+
       expect(payload.imagePath, '/path/image.jpg');
       expect(payload.text, isNull);
     });
 
     test('serializes and deserializes text payload', () {
       const original = WatermarkElementPayload(text: 'Hello World');
-      
+
       final json = original.toJson();
       final restored = WatermarkElementPayload.fromJson(json);
-      
+
       expect(restored.text, original.text);
       expect(restored.imagePath, isNull);
     });
 
     test('serializes and deserializes image payload', () {
       const original = WatermarkElementPayload(imagePath: '/storage/logo.png');
-      
+
       final json = original.toJson();
       final restored = WatermarkElementPayload.fromJson(json);
-      
+
       expect(restored.imagePath, original.imagePath);
       expect(restored.text, isNull);
     });
@@ -330,22 +330,23 @@ void main() {
 
       expect(style.fontSize, 14);
       expect(style.color, const Color(0xFFFFFFFF)); // default white
-      expect(style.fontWeight, FontWeight.w600); // default from WatermarkTextStyle
+      expect(
+          style.fontWeight, FontWeight.w600); // default from WatermarkTextStyle
       expect(style.letterSpacing, isNull); // default null
     });
   });
 
   group('Element editing workflow simulation', () {
     test('element transformation updates work correctly', () {
-      final element = WatermarkElement(
+      final element = const WatermarkElement(
         id: 'editable-1',
         type: WatermarkElementType.text,
-        transform: const WatermarkTransform(
+        transform: WatermarkTransform(
           position: Offset(0.5, 0.5),
           scale: 1.0,
           rotation: 0.0,
         ),
-        payload: const WatermarkElementPayload(text: 'Original Text'),
+        payload: WatermarkElementPayload(text: 'Original Text'),
       );
 
       // 模拟拖拽操作
@@ -383,16 +384,16 @@ void main() {
     });
 
     test('element copying preserves all properties', () {
-      final original = WatermarkElement(
+      final original = const WatermarkElement(
         id: 'original-1',
         type: WatermarkElementType.image,
-        transform: const WatermarkTransform(
+        transform: WatermarkTransform(
           position: Offset(0.2, 0.8),
           scale: 0.8,
           rotation: 15.0,
         ),
-        payload: const WatermarkElementPayload(imagePath: '/test/image.png'),
-        textStyle: const WatermarkTextStyle(
+        payload: WatermarkElementPayload(imagePath: '/test/image.png'),
+        textStyle: WatermarkTextStyle(
           fontSize: 20,
           color: Color(0xFF9C27B0),
         ),
@@ -412,28 +413,28 @@ void main() {
 
     test('multiple elements can be managed independently', () {
       final elements = [
-        WatermarkElement(
+        const WatermarkElement(
           id: 'elem-1',
           type: WatermarkElementType.time,
-          transform: const WatermarkTransform(
+          transform: WatermarkTransform(
             position: Offset(0.1, 0.1),
             scale: 1.0,
             rotation: 0.0,
           ),
         ),
-        WatermarkElement(
+        const WatermarkElement(
           id: 'elem-2',
           type: WatermarkElementType.location,
-          transform: const WatermarkTransform(
+          transform: WatermarkTransform(
             position: Offset(0.9, 0.9),
             scale: 0.8,
             rotation: 0.0,
           ),
         ),
-        WatermarkElement(
+        const WatermarkElement(
           id: 'elem-3',
           type: WatermarkElementType.weather,
-          transform: const WatermarkTransform(
+          transform: WatermarkTransform(
             position: Offset(0.5, 0.1),
             scale: 1.2,
             rotation: 30.0,
@@ -455,8 +456,10 @@ void main() {
       }).toList();
 
       expect(updatedElements.length, 3);
-      expect(updatedElements[0].transform.position, const Offset(0.1, 0.1)); // 未变
-      expect(updatedElements[1].transform.position, const Offset(0.8, 0.8)); // 已更新
+      expect(
+          updatedElements[0].transform.position, const Offset(0.1, 0.1)); // 未变
+      expect(
+          updatedElements[1].transform.position, const Offset(0.8, 0.8)); // 已更新
       expect(updatedElements[1].transform.scale, 1.0); // 已更新
       expect(updatedElements[2].transform.rotation, 30.0); // 未变
     });
