@@ -22,7 +22,7 @@ class Bootstrapper {
   late final WatermarkExporter exporter;
 
   Future<void> initialize() async {
-    storage = const LocalFileStorage();
+    storage = LocalFileStorage.create();
     profileRepository = WatermarkProfileFileRepository(storage);
     projectRepository = ProjectFileRepository(storage);
     locationService = LocationService();

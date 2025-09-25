@@ -1,4 +1,5 @@
-import 'dart:io';
+import 'dart:io' show File;
+import 'package:flutter/foundation.dart';
 
 import 'package:ffmpeg_kit_flutter_min_gpl/ffmpeg_kit.dart';
 import 'package:ffmpeg_kit_flutter_min_gpl/return_code.dart';
@@ -10,6 +11,9 @@ class WatermarkExporter {
     required String photoPath,
     required String overlayPath,
   }) async {
+    if (kIsWeb) {
+      return null;
+    }
     final directory = await getTemporaryDirectory();
     final outputPath = '${directory.path}/${const Uuid().v4()}.jpg';
     final command =
@@ -26,6 +30,9 @@ class WatermarkExporter {
     required String videoPath,
     required String overlayPath,
   }) async {
+    if (kIsWeb) {
+      return null;
+    }
     final directory = await getTemporaryDirectory();
     final outputPath = '${directory.path}/${const Uuid().v4()}.mp4';
     final command =

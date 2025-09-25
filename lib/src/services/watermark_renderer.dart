@@ -1,6 +1,7 @@
 import 'dart:async';
-import 'dart:io';
+import 'dart:io' show File;
 import 'dart:ui' as ui;
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -101,11 +102,14 @@ class WatermarkRenderer {
         );
     final painter = TextPainter(
       text: TextSpan(
-          text: text,
-          style:
-              style.copyWith(color: style.color?.withOpacity(element.opacity))),
+        text: text,
+        style: style.copyWith(
+          color: (style.color ?? Colors.white)
+              .withValues(alpha: element.opacity.clamp(0.0, 1.0)),
+        ),
+      ),
       textAlign: alignCenter ? TextAlign.center : TextAlign.left,
-      textDirection: TextDirection.LTR,
+      textDirection: ui.TextDirection.ltr,
       maxLines: 3,
     )..layout(maxWidth: 400);
     canvas.translate(-painter.width / 2, -painter.height / 2);
@@ -115,33 +119,42 @@ class WatermarkRenderer {
   Future<void> _drawImage(Canvas canvas, WatermarkElement element) async {
     final path = element.payload.imagePath;
     final asset = element.payload.assetName;
+    final base64Bytes = element.payload.imageBytesBase64;
     Uint8List? bytes;
     if (path != null && path.isNotEmpty) {
       bytes = await File(path).readAsBytes();
     } else if (asset != null && asset.isNotEmpty) {
       final data = await rootBundle.load(asset);
       bytes = data.buffer.asUint8List();
+    } else if (base64Bytes != null && base64Bytes.isNotEmpty) {
+      try {
+        bytes = base64Decode(base64Bytes);
+      } catch (_) {}
     }
     if (bytes == null) {
       return;
     }
     final image = await decodeImageFromList(bytes);
-    final paint = Paint()..color = Colors.white.withOpacity(element.opacity);
+    final paint = Paint()
+      ..color = Colors.white.withValues(alpha: element.opacity.clamp(0.0, 1.0));
     final rect = Rect.fromCenter(
         center: Offset.zero,
         width: image.width.toDouble(),
         height: image.height.toDouble());
     canvas.translate(-rect.width / 2, -rect.height / 2);
     canvas.drawImageRect(
-        image,
-        Offset.zero & Size(image.width.toDouble(), image.height.toDouble()),
-        rect,
-        paint);
+      image,
+      Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),
+      rect,
+      paint,
+    );
   }
 
   Future<ui.Image> decodeImageFromList(Uint8List bytes) {
     final completer = Completer<ui.Image>();
-    ui.decodeImageFromList(bytes, completer.complete, completer.completeError);
+    ui.decodeImageFromList(bytes, (ui.Image img) {
+      completer.complete(img);
+    });
     return completer.future;
   }
 

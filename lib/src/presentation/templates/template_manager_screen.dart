@@ -48,13 +48,15 @@ class _TemplateManagerScreenState extends State<TemplateManagerScreen> {
     setState(() {
       _profiles = profiles;
       _loading = false;
-      _activeProfileId = _activeProfileId ??
-          profiles
-              .firstWhere(
-                (profile) => profile.isDefault,
-                orElse: () => profiles.isNotEmpty ? profiles.first : null,
-              )
-              .id;
+      if (_activeProfileId == null) {
+        if (profiles.isNotEmpty) {
+          final selected = profiles.firstWhere(
+            (profile) => profile.isDefault,
+            orElse: () => profiles.first,
+          );
+          _activeProfileId = selected.id;
+        }
+      }
     });
   }
 
