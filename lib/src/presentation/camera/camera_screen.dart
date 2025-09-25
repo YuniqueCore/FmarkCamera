@@ -1,7 +1,7 @@
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:uuid/uuid.dart';
 
@@ -119,9 +119,9 @@ class _CameraScreenState extends State<CameraScreen>
     if (controller == null || !controller.value.isInitialized) {
       return;
     }
-    if (state == AppLifecycleState.inactive) {
-      controller.dispose();
-    } else if (state == AppLifecycleState.resumed) {
+    // On web, controller dispose during tab backgrounding can race with rebuild.
+    // Keep it simple: only reinitialize on resumed; avoid disposing here.
+    if (state == AppLifecycleState.resumed) {
       _initializeCamera();
     }
   }
@@ -321,6 +321,7 @@ class _CameraScreenState extends State<CameraScreen>
                 ),
                 const SizedBox(width: 24),
                 GestureDetector(
+                  behavior: HitTestBehavior.opaque,
                   onTap: cameraAvailable
                       ? (_isVideoMode ? _toggleVideoRecording : _capturePhoto)
                       : null,
@@ -528,19 +529,27 @@ class _CameraScreenState extends State<CameraScreen>
     }
     final contextData = _contextController.context;
     final size = previewSize ?? const Size(1080, 1920);
-    final bytes = await _renderer.renderToBytes(
-      profile: profile,
-      context: contextData,
-      canvasSize: size,
-    );
-    final overlayFile = await _exporter.saveOverlayBytes(bytes);
+    String? overlayPath;
+    try {
+      final bytes = await _renderer.renderToBytes(
+        profile: profile,
+        context: contextData,
+        canvasSize: size,
+      );
+      if (!kIsWeb) {
+        final overlayFile = await _exporter.saveOverlayBytes(bytes);
+        overlayPath = overlayFile.path;
+      }
+    } catch (_) {
+      overlayPath = null;
+    }
     final project = WatermarkProject(
       id: _uuid.v4(),
       mediaPath: path,
       mediaType: mediaType,
       capturedAt: DateTime.now(),
       profileId: profile.id,
-      overlayPath: overlayFile.path,
+      overlayPath: overlayPath,
     );
     final updatedProjects = [..._projects, project];
     await _projectRepository.saveProjects(updatedProjects);

@@ -97,6 +97,7 @@ class _WatermarkElementWidgetState extends State<WatermarkElementWidget> {
       left: left,
       top: top,
       child: GestureDetector(
+        behavior: HitTestBehavior.translucent,
         onTap: widget.onSelected,
         onScaleStart: widget.isEditing ? _onScaleStart : null,
         onScaleUpdate: widget.isEditing ? _onScaleUpdate : null,
