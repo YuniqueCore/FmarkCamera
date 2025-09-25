@@ -180,6 +180,18 @@ class _GalleryScreenState extends State<GalleryScreen> {
       if (updatedThumbnails.containsKey(project.id)) {
         continue;
       }
+      // 失效策略：若没有缩略图，或 profile 比缩略图时间更新，则重渲染
+      final profile = _profileIndex[project.profileId];
+      final needRender = profile == null ||
+          project.thumbnailUpdatedAt == null ||
+          (profile.updatedAt != null &&
+              project.thumbnailUpdatedAt!.isBefore(profile.updatedAt!));
+      if (!needRender && project.thumbnailData != null) {
+        try {
+          updatedThumbnails[project.id] = base64Decode(project.thumbnailData!);
+          continue;
+        } catch (_) {}
+      }
       try {
         final bytes = await _renderer.renderToBytes(
           profile: _profileIndex[project.profileId]!,
@@ -190,6 +202,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
         updatedProjects.add(
           project.copyWith(
             thumbnailData: base64Encode(bytes),
+            thumbnailUpdatedAt: DateTime.now(),
           ),
         );
       } catch (_) {
@@ -214,49 +227,10 @@ class _GalleryScreenState extends State<GalleryScreen> {
     }
   }
 
-  Future<Uint8List?> _composeThumbnail(WatermarkProject project) async {
-    final profile = _profileIndex[project.profileId];
-    if (profile == null) {
-      return null;
-    }
-    try {
-      return await _renderer.renderToBytes(
-        profile: profile,
-        context: _contextController.context,
-        canvasSize: project.canvasSize?.toSize() ?? const Size(1080, 1920),
-      );
-    } catch (_) {
-      return null;
-    }
-  }
+  // kept for future background rendering refactor if needed
+  // Future<Uint8List?> _composeThumbnail(WatermarkProject project) async { return null; }
 
-  Future<void> _refreshOverlay(WatermarkProject project) async {
-    final profiles = await _profileRepository.loadProfiles();
-    final profile = profiles.firstWhere((item) => item.id == project.profileId,
-        orElse: () => profiles.first);
-    final previewSize = project.canvasSize?.toSize() ?? const Size(1080, 1920);
-    final bytes = await _renderer.renderToBytes(
-      profile: profile,
-      context: _contextController.context,
-      canvasSize: previewSize,
-    );
-    final overlayPath = await _exporter.saveOverlayBytes(bytes);
-    final updated = project.copyWith(overlayPath: overlayPath);
-    final updatedProjects = _projects
-        .map((item) => item.id == project.id ? updated : item)
-        .toList();
-    await _projectRepository.saveProjects(updatedProjects.reversed.toList());
-    if (mounted) {
-      setState(() {
-        _projects = updatedProjects;
-        _thumbnails = {..._thumbnails, project.id: bytes};
-      });
-    }
-    if (mounted) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('水印已更新')));
-    }
-  }
+  // Future<void> _refreshOverlay(WatermarkProject project) async {}
 
   void _openDetail(WatermarkProject project) {
     Navigator.of(context).push(
@@ -268,6 +242,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
           renderer: _renderer,
           contextController: _contextController,
           profiles: _profileIndex,
+          bootstrapper: widget.bootstrapper,
           onProjectUpdated: (updated) async {
             final list = _projects
                 .map((item) => item.id == updated.id ? updated : item)
@@ -294,6 +269,7 @@ class _ProjectDetailScreen extends StatefulWidget {
     required this.renderer,
     required this.contextController,
     required this.profiles,
+    required this.bootstrapper,
     required this.onProjectUpdated,
   });
 
@@ -303,6 +279,7 @@ class _ProjectDetailScreen extends StatefulWidget {
   final WatermarkRenderer renderer;
   final WatermarkContextController contextController;
   final Map<String, WatermarkProfile> profiles;
+  final Bootstrapper bootstrapper;
   final Future<void> Function(WatermarkProject project) onProjectUpdated;
 
   @override
@@ -312,7 +289,6 @@ class _ProjectDetailScreen extends StatefulWidget {
 class _ProjectDetailScreenState extends State<_ProjectDetailScreen> {
   late WatermarkProject _project;
   late WatermarkProfile _activeProfile;
-  bool _loading = false;
   bool _exporting = false;
   Uint8List? _previewBytes;
   final PageController _pageController = PageController(viewportFraction: 0.8);
@@ -426,7 +402,7 @@ class _ProjectDetailScreenState extends State<_ProjectDetailScreen> {
                                 children: [
                                   TextButton.icon(
                                     onPressed: () =>
-                                        _openProfileEditor(profile),
+                                        _openProfileEditorLegacy(profile),
                                     icon: const Icon(Icons.edit_outlined,
                                         size: 16),
                                     label: const Text('编辑'),
@@ -507,29 +483,9 @@ class _ProjectDetailScreenState extends State<_ProjectDetailScreen> {
     await _generatePreview();
   }
 
-  Future<void> _openProfileEditor(WatermarkProfile profile) async {
-    final updated = await Navigator.of(context).pushNamed<WatermarkProfile>(
-      WatermarkProfileEditorScreen.routeName,
-      arguments: WatermarkProfileEditorArguments(
-        profile: profile,
-        bootstrapper: widget.bootstrapper,
-      ),
-    );
-    if (updated == null) {
-      return;
-    }
-    widget.profiles[updated.id] = updated;
-    await widget.onProjectUpdated(_project.copyWith(profileId: updated.id));
-    if (mounted) {
-      setState(() {
-        _activeProfile = updated;
-      });
-      await _generatePreview();
-    }
-  }
+  // legacy editor opener replaced by _openProfileEditorLegacy
 
   Future<void> _generatePreview() async {
-    setState(() => _loading = true);
     try {
       final bytes = await widget.renderer.renderToBytes(
         profile: _activeProfile,
@@ -538,12 +494,9 @@ class _ProjectDetailScreenState extends State<_ProjectDetailScreen> {
       );
       setState(() {
         _previewBytes = bytes;
-        _loading = false;
       });
     } catch (_) {
-      setState(() {
-        _loading = false;
-      });
+      // ignore
     }
   }
 
@@ -555,10 +508,22 @@ class _ProjectDetailScreenState extends State<_ProjectDetailScreen> {
       return;
     }
     if (result == null) {
-      _showUnsupportedSnack(
-        _project.mediaType == WatermarkMediaType.photo
-            ? '原始照片导出暂不支持，请手动下载源文件。'
-            : '原始视频导出暂不支持，请手动下载源文件。',
+      await showDialog<void>(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text('导出不可用'),
+          content: Text(
+            _project.mediaType == WatermarkMediaType.photo
+                ? '当前平台无法直接导出原始照片，请手动下载源文件或在移动端导出。'
+                : '当前平台无法直接导出原始视频，请手动下载源文件或在移动端导出。',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('好的'),
+            )
+          ],
+        ),
       );
     } else {
       _showSuccessSnack('原始文件已导出：$result');
@@ -618,21 +583,21 @@ class _ProjectDetailScreenState extends State<_ProjectDetailScreen> {
     }
   }
 
-  void _openProfileEditor(WatermarkProfile profile) async {
-    final updated = await Navigator.of(context).push<WatermarkProfile>(
-      MaterialPageRoute(
-        builder: (_) => WatermarkProfileEditorScreen(
-          arguments: WatermarkProfileEditorArguments(
-            profile: profile,
-            bootstrapper: widget.contextController.bootstrapper,
-          ),
-        ),
+  Future<void> _openProfileEditorLegacy(WatermarkProfile profile) async {
+    final updated = await Navigator.of(context).pushNamed<WatermarkProfile>(
+      WatermarkProfileEditorScreen.routeName,
+      arguments: WatermarkProfileEditorArguments(
+        profile: profile,
+        bootstrapper: widget.bootstrapper,
       ),
     );
-    if (updated != null && mounted) {
-      widget.onProjectUpdated(
-        _project.copyWith(profileId: updated.id),
-      );
+    if (updated == null) {
+      return;
+    }
+    await widget.onProjectUpdated(_project.copyWith(profileId: updated.id));
+    if (mounted) {
+      setState(() => _activeProfile = updated);
+      await _generatePreview();
     }
   }
 

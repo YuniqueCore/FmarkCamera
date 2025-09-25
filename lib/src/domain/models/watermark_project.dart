@@ -1,6 +1,5 @@
 import 'package:fmark_camera/src/domain/models/watermark_media_type.dart';
 import 'package:fmark_camera/src/domain/models/watermark_profile.dart';
-import 'package:fmark_camera/src/domain/models/watermark_context.dart';
 
 class WatermarkProject {
   const WatermarkProject({
@@ -14,6 +13,7 @@ class WatermarkProject {
     this.overlayPath,
     this.thumbnailPath,
     this.thumbnailData,
+    this.thumbnailUpdatedAt,
   });
 
   final String id;
@@ -26,6 +26,7 @@ class WatermarkProject {
   final String? overlayPath;
   final String? thumbnailPath;
   final String? thumbnailData;
+  final DateTime? thumbnailUpdatedAt;
 
   WatermarkProject copyWith({
     String? mediaPath,
@@ -37,6 +38,7 @@ class WatermarkProject {
     String? overlayPath,
     String? thumbnailPath,
     String? thumbnailData,
+    DateTime? thumbnailUpdatedAt,
   }) {
     return WatermarkProject(
       id: id,
@@ -49,6 +51,7 @@ class WatermarkProject {
       overlayPath: overlayPath ?? this.overlayPath,
       thumbnailPath: thumbnailPath ?? this.thumbnailPath,
       thumbnailData: thumbnailData ?? this.thumbnailData,
+      thumbnailUpdatedAt: thumbnailUpdatedAt ?? this.thumbnailUpdatedAt,
     );
   }
 
@@ -63,6 +66,7 @@ class WatermarkProject {
         'overlayPath': overlayPath,
         'thumbnailPath': thumbnailPath,
         'thumbnailData': thumbnailData,
+        'thumbnailUpdatedAt': thumbnailUpdatedAt?.toIso8601String(),
       };
 
   factory WatermarkProject.fromJson(Map<String, dynamic> json) {
@@ -88,6 +92,9 @@ class WatermarkProject {
       overlayPath: json['overlayPath'] as String?,
       thumbnailPath: json['thumbnailPath'] as String?,
       thumbnailData: json['thumbnailData'] as String?,
+      thumbnailUpdatedAt: json['thumbnailUpdatedAt'] == null
+          ? null
+          : DateTime.tryParse(json['thumbnailUpdatedAt'] as String),
     );
   }
 }
