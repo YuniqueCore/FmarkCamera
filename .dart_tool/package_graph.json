@@ -21,7 +21,8 @@
         "permission_handler",
         "shared_preferences",
         "uuid",
-        "video_player"
+        "video_player",
+        "web"
       ],
       "devDependencies": [
         "flutter_lints",
@@ -52,6 +53,11 @@
         "test_api",
         "vector_math"
       ]
+    },
+    {
+      "name": "web",
+      "version": "1.1.1",
+      "dependencies": []
     },
     {
       "name": "shared_preferences",
@@ -486,11 +492,6 @@
         "flutter_plugin_android_lifecycle",
         "image_picker_platform_interface"
       ]
-    },
-    {
-      "name": "web",
-      "version": "1.1.1",
-      "dependencies": []
     },
     {
       "name": "http_parser",

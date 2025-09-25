@@ -225,6 +225,12 @@ class _CameraScreenState extends State<CameraScreen>
     if (profile == null) {
       return const SizedBox.shrink();
     }
+    final controller = _controller;
+    final previewSize = controller?.value.previewSize;
+    final defaultCanvasSize = WatermarkCanvasSize(
+      width: previewSize?.width ?? 1080,
+      height: previewSize?.height ?? 1920,
+    );
     return IgnorePointer(
       ignoring: !_isEditing,
       child: WatermarkCanvas(
@@ -232,6 +238,7 @@ class _CameraScreenState extends State<CameraScreen>
         contextData: contextData,
         selectedElementId: _selectedElementId,
         isEditing: _isEditing,
+        canvasSize: profile.canvasSize ?? defaultCanvasSize,
         onElementSelected: (elementId) {
           setState(() => _selectedElementId = elementId);
         },
@@ -538,7 +545,7 @@ class _CameraScreenState extends State<CameraScreen>
       );
       if (!kIsWeb) {
         final overlayFile = await _exporter.saveOverlayBytes(bytes);
-        overlayPath = overlayFile.path;
+      overlayPath = overlayFile;
       }
     } catch (_) {
       overlayPath = null;

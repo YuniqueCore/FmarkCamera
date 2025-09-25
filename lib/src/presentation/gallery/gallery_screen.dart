@@ -81,8 +81,8 @@ class _GalleryScreenState extends State<GalleryScreen> {
       context: _contextController.context,
       canvasSize: previewSize,
     );
-    final overlayFile = await _exporter.saveOverlayBytes(bytes);
-    final updated = project.copyWith(overlayPath: overlayFile.path);
+    final overlayPath = await _exporter.saveOverlayBytes(bytes);
+    final updated = project.copyWith(overlayPath: overlayPath);
     final updatedProjects = _projects
         .map((item) => item.id == project.id ? updated : item)
         .toList();
@@ -114,8 +114,11 @@ class _GalleryScreenState extends State<GalleryScreen> {
       return;
     }
     if (resultPath == null) {
+      final message = project.mediaType == WatermarkMediaType.photo
+          ? '当前平台暂不支持生成带水印照片，请保存原图后在桌面/移动端导出。'
+          : '当前平台暂不支持生成带水印视频，请保存原视频后在桌面/移动端导出。';
       ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('导出失败，请稍后重试')));
+          .showSnackBar(SnackBar(content: Text(message)));
       return;
     }
     ScaffoldMessenger.of(context)

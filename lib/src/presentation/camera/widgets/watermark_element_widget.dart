@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 
 import 'package:fmark_camera/src/domain/models/watermark_context.dart';
 import 'package:fmark_camera/src/domain/models/watermark_element.dart';
+import 'package:fmark_camera/src/domain/models/watermark_profile.dart';
 import 'package:fmark_camera/src/domain/models/watermark_transform.dart';
 
 typedef TransformChanged = void Function(WatermarkTransform transform);
@@ -30,7 +31,7 @@ class WatermarkElementWidget extends StatefulWidget {
 
   final WatermarkElement element;
   final WatermarkContext contextData;
-  final Size canvasSize;
+  final WatermarkCanvasSize canvasSize;
   final TransformChanged onTransform;
   final OpacityChanged? onOpacityChanged;
   final ElementDeleted? onDelete;
@@ -55,9 +56,10 @@ class _WatermarkElementWidgetState extends State<WatermarkElementWidget> {
   }
 
   void _onScaleUpdate(ScaleUpdateDetails details) {
+    final canvasSize = widget.canvasSize.toSize();
     final delta = details.focalPointDelta;
-    final dx = delta.dx / widget.canvasSize.width;
-    final dy = delta.dy / widget.canvasSize.height;
+    final dx = delta.dx / canvasSize.width;
+    final dy = delta.dy / canvasSize.height;
     final position = Offset(
       (_initialPosition.dx + dx).clamp(0.0, 1.0),
       (_initialPosition.dy + dy).clamp(0.0, 1.0),
@@ -76,8 +78,9 @@ class _WatermarkElementWidgetState extends State<WatermarkElementWidget> {
   @override
   Widget build(BuildContext context) {
     final position = widget.element.transform.position;
-    final left = position.dx * widget.canvasSize.width;
-    final top = position.dy * widget.canvasSize.height;
+    final size = widget.canvasSize.toSize();
+    final left = position.dx * size.width;
+    final top = position.dy * size.height;
     final content = _buildContent();
 
     final child = Transform.rotate(

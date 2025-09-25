@@ -6,6 +6,7 @@ import 'package:fmark_camera/src/domain/repositories/watermark_profile_repositor
 import 'package:fmark_camera/src/services/location_service.dart';
 import 'package:fmark_camera/src/services/watermark_context_controller.dart';
 import 'package:fmark_camera/src/services/watermark_exporter.dart';
+import 'package:fmark_camera/src/services/watermark_exporter_factory.dart';
 import 'package:fmark_camera/src/services/watermark_renderer.dart';
 import 'package:fmark_camera/src/services/weather_service.dart';
 
@@ -32,7 +33,7 @@ class Bootstrapper {
       weatherService: weatherService,
     );
     renderer = WatermarkRenderer();
-    exporter = WatermarkExporter();
+    exporter = WatermarkExporterFactory.create();
     await profileRepository.loadProfiles();
     await contextController.start();
   }
