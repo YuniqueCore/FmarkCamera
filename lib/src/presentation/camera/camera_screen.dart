@@ -236,7 +236,7 @@ class _CameraScreenState extends State<CameraScreen>
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         decoration: BoxDecoration(
-          color: Colors.black.withOpacity(0.45),
+          color: Colors.black.withValues(alpha: 0.45),
           borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
         ),
         child: Column(
@@ -339,7 +339,7 @@ class _CameraScreenState extends State<CameraScreen>
       required VoidCallback onPressed}) {
     return ElevatedButton.icon(
       style: ElevatedButton.styleFrom(
-        backgroundColor: Colors.white.withOpacity(0.1),
+        backgroundColor: Colors.white.withValues(alpha: 0.1),
         foregroundColor: Colors.white,
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       ),

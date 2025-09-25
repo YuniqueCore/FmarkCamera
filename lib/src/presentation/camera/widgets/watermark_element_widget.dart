@@ -1,4 +1,6 @@
-import 'dart:io';
+import 'dart:io' show File;
+import 'package:flutter/foundation.dart';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -161,7 +163,7 @@ class _WatermarkElementWidgetState extends State<WatermarkElementWidget> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.25),
+        color: Colors.black.withValues(alpha: 0.25),
         borderRadius: BorderRadius.circular(6),
       ),
       child: Text(
@@ -175,23 +177,42 @@ class _WatermarkElementWidgetState extends State<WatermarkElementWidget> {
   Widget _buildImage() {
     final asset = widget.element.payload.assetName;
     final filePath = widget.element.payload.imagePath;
+    final base64Bytes = widget.element.payload.imageBytesBase64;
     Widget? image;
     if (asset != null && asset.isNotEmpty) {
       image = Image.asset(asset, width: 96, height: 96, fit: BoxFit.contain);
+    } else if (kIsWeb && base64Bytes != null && base64Bytes.isNotEmpty) {
+      try {
+        final bytes = base64Decode(base64Bytes);
+        image = Image.memory(bytes, width: 96, height: 96, fit: BoxFit.contain);
+      } catch (_) {}
     } else if (filePath != null && filePath.isNotEmpty) {
-      image = Image.file(
-        File(filePath),
-        width: 96,
-        height: 96,
-        fit: BoxFit.contain,
-      );
+      if (kIsWeb) {
+        image = Container(
+          width: 96,
+          height: 96,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: Colors.black.withValues(alpha: 0.3),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: const Icon(Icons.hide_image_outlined, color: Colors.white),
+        );
+      } else {
+        image = Image.file(
+          File(filePath),
+          width: 96,
+          height: 96,
+          fit: BoxFit.contain,
+        );
+      }
     }
     image ??= Container(
       width: 96,
       height: 96,
       alignment: Alignment.center,
       decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.3),
+        color: Colors.black.withValues(alpha: 0.3),
         borderRadius: BorderRadius.circular(12),
       ),
       child: const Icon(Icons.image_outlined, color: Colors.white),

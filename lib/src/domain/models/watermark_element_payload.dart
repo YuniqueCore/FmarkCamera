@@ -3,6 +3,7 @@ class WatermarkElementPayload {
     this.text,
     this.imagePath,
     this.assetName,
+    this.imageBytesBase64,
     this.timeFormat,
     this.showAddress = true,
     this.showCoordinates = false,
@@ -12,6 +13,7 @@ class WatermarkElementPayload {
   final String? text;
   final String? imagePath;
   final String? assetName;
+  final String? imageBytesBase64;
   final String? timeFormat;
   final bool showAddress;
   final bool showCoordinates;
@@ -21,6 +23,7 @@ class WatermarkElementPayload {
     String? text,
     String? imagePath,
     String? assetName,
+    String? imageBytesBase64,
     String? timeFormat,
     bool? showAddress,
     bool? showCoordinates,
@@ -30,10 +33,12 @@ class WatermarkElementPayload {
       text: text ?? this.text,
       imagePath: imagePath ?? this.imagePath,
       assetName: assetName ?? this.assetName,
+      imageBytesBase64: imageBytesBase64 ?? this.imageBytesBase64,
       timeFormat: timeFormat ?? this.timeFormat,
       showAddress: showAddress ?? this.showAddress,
       showCoordinates: showCoordinates ?? this.showCoordinates,
-      showWeatherDescription: showWeatherDescription ?? this.showWeatherDescription,
+      showWeatherDescription:
+          showWeatherDescription ?? this.showWeatherDescription,
     );
   }
 
@@ -41,6 +46,7 @@ class WatermarkElementPayload {
         'text': text,
         'imagePath': imagePath,
         'assetName': assetName,
+        'imageBytesBase64': imageBytesBase64,
         'timeFormat': timeFormat,
         'showAddress': showAddress,
         'showCoordinates': showCoordinates,
@@ -52,6 +58,7 @@ class WatermarkElementPayload {
       text: json['text'] as String?,
       imagePath: json['imagePath'] as String?,
       assetName: json['assetName'] as String?,
+      imageBytesBase64: json['imageBytesBase64'] as String?,
       timeFormat: json['timeFormat'] as String?,
       showAddress: json['showAddress'] as bool? ?? true,
       showCoordinates: json['showCoordinates'] as bool? ?? false,
