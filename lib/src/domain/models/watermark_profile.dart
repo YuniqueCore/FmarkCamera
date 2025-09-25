@@ -1,4 +1,4 @@
-import 'watermark_element.dart';
+import 'package:fmark_camera/src/domain/models/watermark_element.dart';
 
 typedef WatermarkElementList = List<WatermarkElement>;
 

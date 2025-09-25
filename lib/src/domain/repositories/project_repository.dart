@@ -1,4 +1,4 @@
-import '../models/watermark_project.dart';
+import 'package:fmark_camera/src/domain/models/watermark_project.dart';
 
 abstract class ProjectRepository {
   Future<List<WatermarkProject>> loadProjects();

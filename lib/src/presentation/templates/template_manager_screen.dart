@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 
-import '../../domain/models/watermark_element.dart';
-import '../../domain/models/watermark_profile.dart';
-import '../../domain/repositories/watermark_profile_repository.dart';
-import '../../services/bootstrapper.dart';
+import 'package:fmark_camera/src/domain/models/watermark_element.dart';
+import 'package:fmark_camera/src/domain/models/watermark_profile.dart';
+import 'package:fmark_camera/src/domain/repositories/watermark_profile_repository.dart';
+import 'package:fmark_camera/src/services/bootstrapper.dart';
 
 class TemplateManagerScreen extends StatefulWidget {
   const TemplateManagerScreen({super.key, required this.bootstrapper});
@@ -37,7 +37,8 @@ class _TemplateManagerScreenState extends State<TemplateManagerScreen> {
       return;
     }
     _initialized = true;
-    final args = ModalRoute.of(context)?.settings.arguments as TemplateManagerArguments?;
+    final args =
+        ModalRoute.of(context)?.settings.arguments as TemplateManagerArguments?;
     _activeProfileId = args?.activeProfileId;
     _loadProfiles();
   }
@@ -48,8 +49,12 @@ class _TemplateManagerScreenState extends State<TemplateManagerScreen> {
       _profiles = profiles;
       _loading = false;
       _activeProfileId = _activeProfileId ??
-          profiles.firstWhere((profile) => profile.isDefault, orElse: () => profiles.isNotEmpty ? profiles.first : null)
-              ?.id;
+          profiles
+              .firstWhere(
+                (profile) => profile.isDefault,
+                orElse: () => profiles.isNotEmpty ? profiles.first : null,
+              )
+              .id;
     });
   }
 
@@ -69,7 +74,11 @@ class _TemplateManagerScreenState extends State<TemplateManagerScreen> {
               if (!mounted) {
                 return;
               }
-              Navigator.of(context).pop(_profiles.firstWhere((profile) => profile.id == _activeProfileId));
+              Navigator.of(context).pop(
+                _profiles.firstWhere(
+                  (profile) => profile.id == _activeProfileId,
+                ),
+              );
             },
           ),
           IconButton(
@@ -98,7 +107,9 @@ class _TemplateManagerScreenState extends State<TemplateManagerScreen> {
             child: ListTile(
               title: Text(profile.name),
               subtitle: Text('元素 ${profile.elements.length} 个'),
-              trailing: selected ? const Icon(Icons.check_circle, color: Colors.green) : null,
+              trailing: selected
+                  ? const Icon(Icons.check_circle, color: Colors.green)
+                  : null,
               onTap: () => setState(() => _activeProfileId = profile.id),
               onLongPress: () => _renameProfile(profile),
             ),
@@ -120,8 +131,14 @@ class _TemplateManagerScreenState extends State<TemplateManagerScreen> {
             decoration: const InputDecoration(labelText: '模板名称'),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
-            FilledButton(onPressed: () => Navigator.pop(context, controller.text.trim()), child: const Text('确定')),
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, controller.text.trim()),
+              child: const Text('确定'),
+            ),
           ],
         );
       },
@@ -131,7 +148,11 @@ class _TemplateManagerScreenState extends State<TemplateManagerScreen> {
     }
     setState(() {
       _profiles = _profiles
-          .map((item) => item.id == profile.id ? item.copyWith(name: result, updatedAt: DateTime.now()) : item)
+          .map(
+            (item) => item.id == profile.id
+                ? item.copyWith(name: result, updatedAt: DateTime.now())
+                : item,
+          )
           .toList();
     });
   }

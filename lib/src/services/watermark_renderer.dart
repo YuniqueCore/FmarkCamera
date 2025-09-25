@@ -1,15 +1,14 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 
-import '../domain/models/watermark_context.dart';
-import '../domain/models/watermark_element.dart';
-import '../domain/models/watermark_profile.dart';
+import 'package:fmark_camera/src/domain/models/watermark_context.dart';
+import 'package:fmark_camera/src/domain/models/watermark_element.dart';
+import 'package:fmark_camera/src/domain/models/watermark_profile.dart';
 
 class WatermarkRenderer {
   Future<Uint8List> renderToBytes({
@@ -37,7 +36,8 @@ class WatermarkRenderer {
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder, Offset.zero & canvasSize);
 
-    final ordered = [...profile.elements]..sort((a, b) => a.zIndex.compareTo(b.zIndex));
+    final ordered = [...profile.elements]
+      ..sort((a, b) => a.zIndex.compareTo(b.zIndex));
     for (final element in ordered) {
       await _drawElement(canvas, canvasSize, element, context);
     }
@@ -65,7 +65,8 @@ class WatermarkRenderer {
 
     switch (element.type) {
       case WatermarkElementType.text:
-        _drawText(canvas, element, element.payload.text ?? '', alignCenter: true);
+        _drawText(canvas, element, element.payload.text ?? '',
+            alignCenter: true);
         break;
       case WatermarkElementType.time:
         final formatted = _formatTime(context, element);
@@ -87,7 +88,8 @@ class WatermarkRenderer {
     canvas.restore();
   }
 
-  void _drawText(Canvas canvas, WatermarkElement element, String text, {required bool alignCenter}) {
+  void _drawText(Canvas canvas, WatermarkElement element, String text,
+      {required bool alignCenter}) {
     if (text.isEmpty) {
       return;
     }
@@ -98,9 +100,12 @@ class WatermarkRenderer {
           fontWeight: FontWeight.w500,
         );
     final painter = TextPainter(
-      text: TextSpan(text: text, style: style.copyWith(color: style.color.withOpacity(element.opacity))),
+      text: TextSpan(
+          text: text,
+          style:
+              style.copyWith(color: style.color?.withOpacity(element.opacity))),
       textAlign: alignCenter ? TextAlign.center : TextAlign.left,
-      textDirection: TextDirection.ltr,
+      textDirection: TextDirection.LTR,
       maxLines: 3,
     )..layout(maxWidth: 400);
     canvas.translate(-painter.width / 2, -painter.height / 2);
@@ -122,9 +127,16 @@ class WatermarkRenderer {
     }
     final image = await decodeImageFromList(bytes);
     final paint = Paint()..color = Colors.white.withOpacity(element.opacity);
-    final rect = Rect.fromCenter(center: Offset.zero, width: image.width.toDouble(), height: image.height.toDouble());
+    final rect = Rect.fromCenter(
+        center: Offset.zero,
+        width: image.width.toDouble(),
+        height: image.height.toDouble());
     canvas.translate(-rect.width / 2, -rect.height / 2);
-    canvas.drawImageRect(image, Offset.zero & Size(image.width.toDouble(), image.height.toDouble()), rect, paint);
+    canvas.drawImageRect(
+        image,
+        Offset.zero & Size(image.width.toDouble(), image.height.toDouble()),
+        rect,
+        paint);
   }
 
   Future<ui.Image> decodeImageFromList(Uint8List bytes) {
@@ -153,7 +165,8 @@ class WatermarkRenderer {
       if (buffer.isNotEmpty) {
         buffer.write(' ');
       }
-      buffer.write('${location.latitude.toStringAsFixed(4)}, ${location.longitude.toStringAsFixed(4)}');
+      buffer.write(
+          '${location.latitude.toStringAsFixed(4)}, ${location.longitude.toStringAsFixed(4)}');
     }
     return buffer.isEmpty ? '定位未获取' : buffer.toString();
   }
@@ -164,7 +177,8 @@ class WatermarkRenderer {
       return '天气获取中...';
     }
     final temp = '${weather.temperatureCelsius.toStringAsFixed(1)}°C';
-    if (!element.payload.showWeatherDescription || weather.description == null) {
+    if (!element.payload.showWeatherDescription ||
+        weather.description == null) {
       return temp;
     }
     return '$temp ${weather.description}';

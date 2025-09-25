@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 
-import 'presentation/camera/camera_screen.dart';
-import 'presentation/gallery/gallery_screen.dart';
-import 'presentation/settings/settings_screen.dart';
-import 'presentation/templates/template_manager_screen.dart';
-import 'services/bootstrapper.dart';
+import 'package:fmark_camera/src/presentation/camera/camera_screen.dart';
+import 'package:fmark_camera/src/presentation/gallery/gallery_screen.dart';
+import 'package:fmark_camera/src/presentation/settings/settings_screen.dart';
+import 'package:fmark_camera/src/presentation/templates/template_manager_screen.dart';
+import 'package:fmark_camera/src/services/bootstrapper.dart';
 
 class FmarkCameraApp extends StatefulWidget {
   const FmarkCameraApp({super.key});
@@ -34,9 +34,7 @@ class _FmarkCameraAppState extends State<FmarkCameraApp> {
   Widget build(BuildContext context) {
     if (!_isReady) {
       return const MaterialApp(
-        home: Scaffold(
-          body: Center(child: CircularProgressIndicator()),
-        ),
+        home: Scaffold(body: Center(child: CircularProgressIndicator())),
       );
     }
 
@@ -47,10 +45,14 @@ class _FmarkCameraAppState extends State<FmarkCameraApp> {
         useMaterial3: true,
       ),
       routes: {
-        CameraScreen.routeName: (_) => CameraScreen(bootstrapper: _bootstrapper),
-        TemplateManagerScreen.routeName: (_) => TemplateManagerScreen(bootstrapper: _bootstrapper),
-        GalleryScreen.routeName: (_) => GalleryScreen(bootstrapper: _bootstrapper),
-        SettingsScreen.routeName: (_) => SettingsScreen(bootstrapper: _bootstrapper),
+        CameraScreen.routeName: (_) =>
+            CameraScreen(bootstrapper: _bootstrapper),
+        TemplateManagerScreen.routeName: (_) =>
+            TemplateManagerScreen(bootstrapper: _bootstrapper),
+        GalleryScreen.routeName: (_) =>
+            GalleryScreen(bootstrapper: _bootstrapper),
+        SettingsScreen.routeName: (_) =>
+            SettingsScreen(bootstrapper: _bootstrapper),
       },
       initialRoute: CameraScreen.routeName,
     );

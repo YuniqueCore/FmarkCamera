@@ -4,12 +4,12 @@ import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 
-import '../../domain/models/watermark_element.dart';
-import '../../domain/models/watermark_profile.dart';
-import '../../domain/models/watermark_text_style.dart';
-import '../../domain/models/watermark_transform.dart';
-import '../../domain/repositories/watermark_profile_repository.dart';
-import '../storage/local_file_storage.dart';
+import 'package:fmark_camera/src/domain/models/watermark_element.dart';
+import 'package:fmark_camera/src/domain/models/watermark_profile.dart';
+import 'package:fmark_camera/src/domain/models/watermark_text_style.dart';
+import 'package:fmark_camera/src/domain/models/watermark_transform.dart';
+import 'package:fmark_camera/src/domain/repositories/watermark_profile_repository.dart';
+import 'package:fmark_camera/src/data/storage/local_file_storage.dart';
 
 class WatermarkProfileFileRepository implements WatermarkProfileRepository {
   WatermarkProfileFileRepository(this.storage);
@@ -98,7 +98,8 @@ class WatermarkProfileFileRepository implements WatermarkProfileRepository {
       WatermarkProfile(
         id: _uuid.v4(),
         name: '默认模板',
-        elements: elements.sorted((a, b) => a.zIndex.compareTo(b.zIndex)).toList(),
+        elements:
+            elements.sorted((a, b) => a.zIndex.compareTo(b.zIndex)).toList(),
         isDefault: true,
         updatedAt: DateTime.now(),
       ),

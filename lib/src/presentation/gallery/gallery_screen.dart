@@ -1,14 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 
-import '../../domain/models/watermark_media_type.dart';
-import '../../domain/models/watermark_project.dart';
-import '../../domain/repositories/project_repository.dart';
-import '../../domain/repositories/watermark_profile_repository.dart';
-import '../../services/bootstrapper.dart';
-import '../../services/watermark_context_controller.dart';
-import '../../services/watermark_exporter.dart';
-import '../../services/watermark_renderer.dart';
+import 'package:fmark_camera/src/domain/models/watermark_media_type.dart';
+import 'package:fmark_camera/src/domain/models/watermark_project.dart';
+import 'package:fmark_camera/src/domain/repositories/project_repository.dart';
+import 'package:fmark_camera/src/domain/repositories/watermark_profile_repository.dart';
+import 'package:fmark_camera/src/services/bootstrapper.dart';
+import 'package:fmark_camera/src/services/watermark_context_controller.dart';
+import 'package:fmark_camera/src/services/watermark_exporter.dart';
+import 'package:fmark_camera/src/services/watermark_renderer.dart';
 
 class GalleryScreen extends StatefulWidget {
   const GalleryScreen({super.key, required this.bootstrapper});
@@ -73,7 +73,8 @@ class _GalleryScreenState extends State<GalleryScreen> {
 
   Future<void> _refreshOverlay(WatermarkProject project) async {
     final profiles = await _profileRepository.loadProfiles();
-    final profile = profiles.firstWhere((item) => item.id == project.profileId, orElse: () => profiles.first);
+    final profile = profiles.firstWhere((item) => item.id == project.profileId,
+        orElse: () => profiles.first);
     final previewSize = const Size(1080, 1920);
     final bytes = await _renderer.renderToBytes(
       profile: profile,
@@ -82,11 +83,14 @@ class _GalleryScreenState extends State<GalleryScreen> {
     );
     final overlayFile = await _exporter.saveOverlayBytes(bytes);
     final updated = project.copyWith(overlayPath: overlayFile.path);
-    final updatedProjects = _projects.map((item) => item.id == project.id ? updated : item).toList();
+    final updatedProjects = _projects
+        .map((item) => item.id == project.id ? updated : item)
+        .toList();
     await _projectRepository.saveProjects(updatedProjects.reversed.toList());
     setState(() => _projects = updatedProjects);
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('水印已更新')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('水印已更新')));
     }
   }
 
@@ -100,18 +104,22 @@ class _GalleryScreenState extends State<GalleryScreen> {
     }
     String? resultPath;
     if (project.mediaType == WatermarkMediaType.photo) {
-      resultPath = await _exporter.composePhoto(photoPath: project.mediaPath, overlayPath: overlay);
+      resultPath = await _exporter.composePhoto(
+          photoPath: project.mediaPath, overlayPath: overlay);
     } else {
-      resultPath = await _exporter.composeVideo(videoPath: project.mediaPath, overlayPath: overlay);
+      resultPath = await _exporter.composeVideo(
+          videoPath: project.mediaPath, overlayPath: overlay);
     }
     if (!mounted) {
       return;
     }
     if (resultPath == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('导出失败，请稍后重试')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('导出失败，请稍后重试')));
       return;
     }
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('导出成功: $resultPath')));
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text('导出成功：$resultPath')));
   }
 }
 
@@ -129,11 +137,14 @@ class _ProjectCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final fileName = p.basename(project.mediaPath);
-    final subtitle = '${project.mediaType.name.toUpperCase()}  ·  ${project.capturedAt}';
+    final subtitle =
+        '${project.mediaType.name.toUpperCase()}  ·  ${project.capturedAt}';
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: ListTile(
-        leading: Icon(project.mediaType == WatermarkMediaType.photo ? Icons.photo_camera : Icons.videocam),
+        leading: Icon(project.mediaType == WatermarkMediaType.photo
+            ? Icons.photo_camera
+            : Icons.videocam),
         title: Text(fileName),
         subtitle: Text(subtitle),
         isThreeLine: true,

@@ -2,11 +2,10 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import '../domain/models/location_snapshot.dart';
-import '../domain/models/watermark_context.dart';
-import '../domain/models/weather_snapshot.dart';
-import 'location_service.dart';
-import 'weather_service.dart';
+import 'package:fmark_camera/src/domain/models/watermark_context.dart';
+import 'package:fmark_camera/src/domain/models/weather_snapshot.dart';
+import 'package:fmark_camera/src/services/location_service.dart';
+import 'package:fmark_camera/src/services/weather_service.dart';
 
 class WatermarkContextController extends ChangeNotifier {
   WatermarkContextController({

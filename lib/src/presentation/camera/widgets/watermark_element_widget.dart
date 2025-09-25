@@ -3,9 +3,9 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
-import '../../../domain/models/watermark_context.dart';
-import '../../../domain/models/watermark_element.dart';
-import '../../../domain/models/watermark_transform.dart';
+import 'package:fmark_camera/src/domain/models/watermark_context.dart';
+import 'package:fmark_camera/src/domain/models/watermark_element.dart';
+import 'package:fmark_camera/src/domain/models/watermark_transform.dart';
 
 typedef TransformChanged = void Function(WatermarkTransform transform);
 typedef OpacityChanged = void Function(double opacity);
@@ -64,10 +64,10 @@ class _WatermarkElementWidgetState extends State<WatermarkElementWidget> {
     final rotation = _initialRotation + details.rotation;
     widget.onTransform(
       widget.element.transform.copyWith(
-            position: position,
-            scale: scale,
-            rotation: rotation,
-          ),
+        position: position,
+        scale: scale,
+        rotation: rotation,
+      ),
     );
   }
 
@@ -138,7 +138,8 @@ class _WatermarkElementWidgetState extends State<WatermarkElementWidget> {
   Widget _buildContent() {
     switch (widget.element.type) {
       case WatermarkElementType.text:
-        return _buildText(widget.element.payload.text ?? '文本', align: TextAlign.center);
+        return _buildText(widget.element.payload.text ?? '文本',
+            align: TextAlign.center);
       case WatermarkElementType.time:
         return _buildText(_formatTime(), align: TextAlign.left);
       case WatermarkElementType.location:
@@ -199,7 +200,8 @@ class _WatermarkElementWidgetState extends State<WatermarkElementWidget> {
   }
 
   String _formatTime() {
-    final formatter = DateFormat(widget.element.payload.timeFormat ?? 'yyyy-MM-dd HH:mm:ss');
+    final formatter =
+        DateFormat(widget.element.payload.timeFormat ?? 'yyyy-MM-dd HH:mm:ss');
     return formatter.format(widget.contextData.now);
   }
 
@@ -218,7 +220,8 @@ class _WatermarkElementWidgetState extends State<WatermarkElementWidget> {
       if (buffer.isNotEmpty) {
         buffer.write(' ');
       }
-      buffer.write('${location.latitude.toStringAsFixed(4)}, ${location.longitude.toStringAsFixed(4)}');
+      buffer.write(
+          '${location.latitude.toStringAsFixed(4)}, ${location.longitude.toStringAsFixed(4)}');
     }
     return buffer.isEmpty ? '定位未获取' : buffer.toString();
   }
@@ -229,7 +232,8 @@ class _WatermarkElementWidgetState extends State<WatermarkElementWidget> {
       return '天气获取中...';
     }
     final temperature = '${weather.temperatureCelsius.toStringAsFixed(1)}°C';
-    if (!widget.element.payload.showWeatherDescription || weather.description == null) {
+    if (!widget.element.payload.showWeatherDescription ||
+        weather.description == null) {
       return temperature;
     }
     return '$temperature ${weather.description}';

@@ -4,23 +4,23 @@ import 'package:image_picker/image_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:uuid/uuid.dart';
 
-import '../../domain/models/watermark_context.dart';
-import '../../domain/models/watermark_element.dart';
-import '../../domain/models/watermark_element_payload.dart';
-import '../../domain/models/watermark_media_type.dart';
-import '../../domain/models/watermark_profile.dart';
-import '../../domain/models/watermark_project.dart';
-import '../../domain/models/watermark_transform.dart';
-import '../../domain/repositories/project_repository.dart';
-import '../../domain/repositories/watermark_profile_repository.dart';
-import '../../services/bootstrapper.dart';
-import '../../services/watermark_context_controller.dart';
-import '../../services/watermark_exporter.dart';
-import '../../services/watermark_renderer.dart';
-import '../gallery/gallery_screen.dart';
-import '../templates/template_manager_screen.dart';
-import '../widgets/context_badge.dart';
-import 'widgets/watermark_canvas.dart';
+import 'package:fmark_camera/src/domain/models/watermark_context.dart';
+import 'package:fmark_camera/src/domain/models/watermark_element.dart';
+import 'package:fmark_camera/src/domain/models/watermark_element_payload.dart';
+import 'package:fmark_camera/src/domain/models/watermark_media_type.dart';
+import 'package:fmark_camera/src/domain/models/watermark_profile.dart';
+import 'package:fmark_camera/src/domain/models/watermark_project.dart';
+import 'package:fmark_camera/src/domain/models/watermark_transform.dart';
+import 'package:fmark_camera/src/domain/repositories/project_repository.dart';
+import 'package:fmark_camera/src/domain/repositories/watermark_profile_repository.dart';
+import 'package:fmark_camera/src/services/bootstrapper.dart';
+import 'package:fmark_camera/src/services/watermark_context_controller.dart';
+import 'package:fmark_camera/src/services/watermark_exporter.dart';
+import 'package:fmark_camera/src/services/watermark_renderer.dart';
+import 'package:fmark_camera/src/presentation/gallery/gallery_screen.dart';
+import 'package:fmark_camera/src/presentation/templates/template_manager_screen.dart';
+import 'package:fmark_camera/src/presentation/widgets/context_badge.dart';
+import 'package:fmark_camera/src/presentation/camera/widgets/watermark_canvas.dart';
 
 class CameraScreen extends StatefulWidget {
   const CameraScreen({super.key, required this.bootstrapper});
@@ -32,7 +32,8 @@ class CameraScreen extends StatefulWidget {
   State<CameraScreen> createState() => _CameraScreenState();
 }
 
-class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver {
+class _CameraScreenState extends State<CameraScreen>
+    with WidgetsBindingObserver {
   final Uuid _uuid = const Uuid();
   CameraController? _controller;
   List<CameraDescription> _cameras = const <CameraDescription>[];
@@ -45,10 +46,13 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
   WatermarkProfile? _activeProfile;
   List<WatermarkProject> _projects = const <WatermarkProject>[];
 
-  WatermarkProfileRepository get _profileRepository => widget.bootstrapper.profileRepository;
-  ProjectRepository get _projectRepository => widget.bootstrapper.projectRepository;
+  WatermarkProfileRepository get _profileRepository =>
+      widget.bootstrapper.profileRepository;
+  ProjectRepository get _projectRepository =>
+      widget.bootstrapper.projectRepository;
   WatermarkRenderer get _renderer => widget.bootstrapper.renderer;
-  WatermarkContextController get _contextController => widget.bootstrapper.contextController;
+  WatermarkContextController get _contextController =>
+      widget.bootstrapper.contextController;
   WatermarkExporter get _exporter => widget.bootstrapper.exporter;
 
   @override
@@ -132,7 +136,8 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
                 : () async {
                     final selected = await Navigator.of(context).pushNamed(
                       TemplateManagerScreen.routeName,
-                      arguments: TemplateManagerArguments(activeProfileId: _activeProfile!.id),
+                      arguments: TemplateManagerArguments(
+                          activeProfileId: _activeProfile!.id),
                     ) as WatermarkProfile?;
                     if (selected != null) {
                       setState(() => _activeProfile = selected);
@@ -142,7 +147,8 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
           ),
           IconButton(
             icon: const Icon(Icons.collections_outlined),
-            onPressed: () => Navigator.of(context).pushNamed(GalleryScreen.routeName),
+            onPressed: () =>
+                Navigator.of(context).pushNamed(GalleryScreen.routeName),
           ),
         ],
       ),
@@ -163,12 +169,14 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
                             ),
                           ),
                           Positioned.fill(
-                            child: _buildWatermarkLayer(_contextController.context),
+                            child: _buildWatermarkLayer(
+                                _contextController.context),
                           ),
                           Positioned(
                             left: 16,
                             top: 16,
-                            child: ContextBadge(contextData: _contextController.context),
+                            child: ContextBadge(
+                                contextData: _contextController.context),
                           ),
                         ],
                       ),
@@ -197,12 +205,18 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
           setState(() => _selectedElementId = elementId);
         },
         onElementChanged: (element) {
-          final updated = profile.elements.map((item) => item.id == element.id ? element : item).toList();
-          _updateProfile(profile.copyWith(elements: updated, updatedAt: DateTime.now()));
+          final updated = profile.elements
+              .map((item) => item.id == element.id ? element : item)
+              .toList();
+          _updateProfile(
+              profile.copyWith(elements: updated, updatedAt: DateTime.now()));
         },
         onElementDeleted: (elementId) {
-          final updated = profile.elements.where((element) => element.id != elementId).toList();
-          _updateProfile(profile.copyWith(elements: updated, updatedAt: DateTime.now()));
+          final updated = profile.elements
+              .where((element) => element.id != elementId)
+              .toList();
+          _updateProfile(
+              profile.copyWith(elements: updated, updatedAt: DateTime.now()));
           setState(() => _selectedElementId = null);
         },
       ),
@@ -211,7 +225,8 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
 
   Widget _buildControls() {
     final controller = _controller;
-    final cameraAvailable = controller != null && controller.value.isInitialized;
+    final cameraAvailable =
+        controller != null && controller.value.isInitialized;
     return SafeArea(
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -228,17 +243,38 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
                   child: Wrap(
                     spacing: 8,
                     children: [
-                      _buildAddButton(label: '时间', icon: Icons.access_time, onPressed: () => _addElement(WatermarkElementType.time)),
-                      _buildAddButton(label: '地点', icon: Icons.place_outlined, onPressed: () => _addElement(WatermarkElementType.location)),
-                      _buildAddButton(label: '天气', icon: Icons.wb_sunny_outlined, onPressed: () => _addElement(WatermarkElementType.weather)),
-                      _buildAddButton(label: '文本', icon: Icons.text_fields, onPressed: () => _addElement(WatermarkElementType.text)),
-                      _buildAddButton(label: '图片', icon: Icons.image_outlined, onPressed: _addImageElement),
+                      _buildAddButton(
+                          label: '时间',
+                          icon: Icons.access_time,
+                          onPressed: () =>
+                              _addElement(WatermarkElementType.time)),
+                      _buildAddButton(
+                          label: '地点',
+                          icon: Icons.place_outlined,
+                          onPressed: () =>
+                              _addElement(WatermarkElementType.location)),
+                      _buildAddButton(
+                          label: '天气',
+                          icon: Icons.wb_sunny_outlined,
+                          onPressed: () =>
+                              _addElement(WatermarkElementType.weather)),
+                      _buildAddButton(
+                          label: '文本',
+                          icon: Icons.text_fields,
+                          onPressed: () =>
+                              _addElement(WatermarkElementType.text)),
+                      _buildAddButton(
+                          label: '图片',
+                          icon: Icons.image_outlined,
+                          onPressed: _addImageElement),
                     ],
                   ),
                 ),
                 IconButton(
                   onPressed: () => setState(() => _isEditing = !_isEditing),
-                  icon: Icon(_isEditing ? Icons.visibility_off_outlined : Icons.edit_outlined),
+                  icon: Icon(_isEditing
+                      ? Icons.visibility_off_outlined
+                      : Icons.edit_outlined),
                   color: Colors.white,
                 ),
               ],
@@ -248,12 +284,15 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 IconButton(
-                  icon: const Icon(Icons.cameraswitch_outlined, color: Colors.white),
+                  icon: const Icon(Icons.cameraswitch_outlined,
+                      color: Colors.white),
                   onPressed: _switchCamera,
                 ),
                 const SizedBox(width: 24),
                 GestureDetector(
-                  onTap: cameraAvailable ? (_isVideoMode ? _toggleVideoRecording : _capturePhoto) : null,
+                  onTap: cameraAvailable
+                      ? (_isVideoMode ? _toggleVideoRecording : _capturePhoto)
+                      : null,
                   child: Container(
                     width: 72,
                     height: 72,
@@ -267,15 +306,18 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
                       height: 52,
                       decoration: BoxDecoration(
                         color: _isRecording ? Colors.red : Colors.white,
-                        shape: _isVideoMode ? BoxShape.rectangle : BoxShape.circle,
-                        borderRadius: _isVideoMode ? BorderRadius.circular(12) : null,
+                        shape:
+                            _isVideoMode ? BoxShape.rectangle : BoxShape.circle,
+                        borderRadius:
+                            _isVideoMode ? BorderRadius.circular(12) : null,
                       ),
                     ),
                   ),
                 ),
                 const SizedBox(width: 24),
                 IconButton(
-                  icon: Icon(_isVideoMode ? Icons.videocam : Icons.camera, color: Colors.white),
+                  icon: Icon(_isVideoMode ? Icons.videocam : Icons.camera,
+                      color: Colors.white),
                   onPressed: () => setState(() => _isVideoMode = !_isVideoMode),
                 ),
               ],
@@ -286,7 +328,10 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
     );
   }
 
-  Widget _buildAddButton({required String label, required IconData icon, required VoidCallback onPressed}) {
+  Widget _buildAddButton(
+      {required String label,
+      required IconData icon,
+      required VoidCallback onPressed}) {
     return ElevatedButton.icon(
       style: ElevatedButton.styleFrom(
         backgroundColor: Colors.white.withOpacity(0.1),
@@ -310,7 +355,8 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
     final currentIndex = _cameras.indexOf(controller.description);
     final nextIndex = (currentIndex + 1) % _cameras.length;
     final nextCamera = _cameras[nextIndex];
-    final newController = CameraController(nextCamera, ResolutionPreset.high, enableAudio: true);
+    final newController =
+        CameraController(nextCamera, ResolutionPreset.high, enableAudio: true);
     await newController.initialize();
     await controller.dispose();
     setState(() {
@@ -333,7 +379,8 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
         element = WatermarkElement(
           id: _uuid.v4(),
           type: type,
-          transform: const WatermarkTransform(position: Offset(0.5, 0.5), scale: 1, rotation: 0),
+          transform: const WatermarkTransform(
+              position: Offset(0.5, 0.5), scale: 1, rotation: 0),
           payload: const WatermarkElementPayload(text: '自定义文本'),
         );
         break;
@@ -341,34 +388,39 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
         element = WatermarkElement(
           id: _uuid.v4(),
           type: type,
-          transform: const WatermarkTransform(position: Offset(0.5, 0.2), scale: 1, rotation: 0),
+          transform: const WatermarkTransform(
+              position: Offset(0.5, 0.2), scale: 1, rotation: 0),
         );
         break;
       case WatermarkElementType.location:
         element = WatermarkElement(
           id: _uuid.v4(),
           type: type,
-          transform: const WatermarkTransform(position: Offset(0.5, 0.3), scale: 1, rotation: 0),
+          transform: const WatermarkTransform(
+              position: Offset(0.5, 0.3), scale: 1, rotation: 0),
         );
         break;
       case WatermarkElementType.weather:
         element = WatermarkElement(
           id: _uuid.v4(),
           type: type,
-          transform: const WatermarkTransform(position: Offset(0.5, 0.4), scale: 1, rotation: 0),
+          transform: const WatermarkTransform(
+              position: Offset(0.5, 0.4), scale: 1, rotation: 0),
         );
         break;
       case WatermarkElementType.image:
         return;
     }
     final updated = [...profile.elements, element];
-    _updateProfile(profile.copyWith(elements: updated, updatedAt: DateTime.now()));
+    _updateProfile(
+        profile.copyWith(elements: updated, updatedAt: DateTime.now()));
     setState(() => _selectedElementId = element.id);
   }
 
   Future<void> _addImageElement() async {
     final picker = ImagePicker();
-    final file = await picker.pickImage(source: ImageSource.gallery, imageQuality: 90);
+    final file =
+        await picker.pickImage(source: ImageSource.gallery, imageQuality: 90);
     if (file == null) {
       return;
     }
@@ -379,18 +431,22 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
     final element = WatermarkElement(
       id: _uuid.v4(),
       type: WatermarkElementType.image,
-      transform: const WatermarkTransform(position: Offset(0.5, 0.5), scale: 1, rotation: 0),
+      transform: const WatermarkTransform(
+          position: Offset(0.5, 0.5), scale: 1, rotation: 0),
       payload: WatermarkElementPayload(imagePath: file.path),
     );
     final updated = [...profile.elements, element];
-    _updateProfile(profile.copyWith(elements: updated, updatedAt: DateTime.now()));
+    _updateProfile(
+        profile.copyWith(elements: updated, updatedAt: DateTime.now()));
     setState(() => _selectedElementId = element.id);
   }
 
   Future<void> _capturePhoto() async {
     final controller = _controller;
     final profile = _activeProfile;
-    if (controller == null || profile == null || controller.value.isTakingPicture) {
+    if (controller == null ||
+        profile == null ||
+        controller.value.isTakingPicture) {
       return;
     }
     final file = await controller.takePicture();
@@ -401,7 +457,7 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
     );
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('照片已保存，可在图库中导出水印版本')), 
+        const SnackBar(content: Text('照片已保存，可在图库中导出水印版本')),
       );
     }
   }
@@ -461,7 +517,9 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
   }
 
   Future<void> _updateProfile(WatermarkProfile profile) async {
-    final profiles = _profiles.map((item) => item.id == profile.id ? profile : item).toList();
+    final profiles = _profiles
+        .map((item) => item.id == profile.id ? profile : item)
+        .toList();
     await _profileRepository.saveProfiles(profiles);
     setState(() {
       _profiles = profiles;
@@ -473,4 +531,3 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
     await _profileRepository.saveProfiles(_profiles);
   }
 }
-

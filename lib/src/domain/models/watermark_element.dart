@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 
-import 'watermark_element_payload.dart';
-import 'watermark_text_style.dart';
-import 'watermark_transform.dart';
+import 'package:fmark_camera/src/domain/models/watermark_element_payload.dart';
+import 'package:fmark_camera/src/domain/models/watermark_text_style.dart';
+import 'package:fmark_camera/src/domain/models/watermark_transform.dart';
 
 enum WatermarkElementType { text, time, location, weather, image }
 
@@ -72,8 +72,9 @@ class WatermarkElement {
         json['transform'] as Map<String, dynamic>? ?? <String, dynamic>{},
       ),
       opacity: (json['opacity'] as num?)?.toDouble() ?? 1.0,
-      textStyle:
-          textStyleJson == null ? null : WatermarkTextStyle.fromJson(textStyleJson),
+      textStyle: textStyleJson == null
+          ? null
+          : WatermarkTextStyle.fromJson(textStyleJson),
       payload: WatermarkElementPayload.fromJson(
         json['payload'] as Map<String, dynamic>? ?? <String, dynamic>{},
       ),

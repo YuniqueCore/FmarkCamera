@@ -1,4 +1,4 @@
-import 'watermark_media_type.dart';
+import 'package:fmark_camera/src/domain/models/watermark_media_type.dart';
 
 class WatermarkProject {
   const WatermarkProject({
@@ -49,7 +49,8 @@ class WatermarkProject {
       };
 
   factory WatermarkProject.fromJson(Map<String, dynamic> json) {
-    final typeName = json['mediaType'] as String? ?? WatermarkMediaType.photo.name;
+    final typeName =
+        json['mediaType'] as String? ?? WatermarkMediaType.photo.name;
     final mediaType = WatermarkMediaType.values.firstWhere(
       (value) => value.name == typeName,
       orElse: () => WatermarkMediaType.photo,
@@ -58,7 +59,8 @@ class WatermarkProject {
       id: json['id'] as String? ?? '',
       mediaPath: json['mediaPath'] as String? ?? '',
       mediaType: mediaType,
-      capturedAt: DateTime.tryParse(json['capturedAt'] as String? ?? '') ?? DateTime.now(),
+      capturedAt: DateTime.tryParse(json['capturedAt'] as String? ?? '') ??
+          DateTime.now(),
       profileId: json['profileId'] as String? ?? '',
       overlayPath: json['overlayPath'] as String?,
       thumbnailPath: json['thumbnailPath'] as String?,

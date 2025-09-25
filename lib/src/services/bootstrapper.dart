@@ -1,13 +1,13 @@
-import '../data/repositories/project_file_repository.dart';
-import '../data/repositories/watermark_profile_file_repository.dart';
-import '../data/storage/local_file_storage.dart';
-import '../domain/repositories/project_repository.dart';
-import '../domain/repositories/watermark_profile_repository.dart';
-import 'location_service.dart';
-import 'watermark_context_controller.dart';
-import 'watermark_exporter.dart';
-import 'watermark_renderer.dart';
-import 'weather_service.dart';
+import 'package:fmark_camera/src/data/repositories/project_file_repository.dart';
+import 'package:fmark_camera/src/data/repositories/watermark_profile_file_repository.dart';
+import 'package:fmark_camera/src/data/storage/local_file_storage.dart';
+import 'package:fmark_camera/src/domain/repositories/project_repository.dart';
+import 'package:fmark_camera/src/domain/repositories/watermark_profile_repository.dart';
+import 'package:fmark_camera/src/services/location_service.dart';
+import 'package:fmark_camera/src/services/watermark_context_controller.dart';
+import 'package:fmark_camera/src/services/watermark_exporter.dart';
+import 'package:fmark_camera/src/services/watermark_renderer.dart';
+import 'package:fmark_camera/src/services/weather_service.dart';
 
 class Bootstrapper {
   Bootstrapper();

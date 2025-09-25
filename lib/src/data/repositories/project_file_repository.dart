@@ -1,8 +1,8 @@
 import 'dart:async';
 
-import '../../domain/models/watermark_project.dart';
-import '../../domain/repositories/project_repository.dart';
-import '../storage/local_file_storage.dart';
+import 'package:fmark_camera/src/domain/models/watermark_project.dart';
+import 'package:fmark_camera/src/domain/repositories/project_repository.dart';
+import 'package:fmark_camera/src/data/storage/local_file_storage.dart';
 
 class ProjectFileRepository implements ProjectRepository {
   ProjectFileRepository(this.storage);

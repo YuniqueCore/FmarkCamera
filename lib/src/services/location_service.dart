@@ -10,7 +10,10 @@ class LocationService {
       return null;
     }
     final position = await Geolocator.getCurrentPosition();
-    final placemarks = await placemarkFromCoordinates(position.latitude, position.longitude);
+    final placemarks = await placemarkFromCoordinates(
+      position.latitude,
+      position.longitude,
+    );
     final first = placemarks.isNotEmpty ? placemarks.first : null;
     return LocationSnapshot(
       latitude: position.latitude,
@@ -46,7 +49,9 @@ class LocationService {
       placemark.subLocality,
       placemark.street,
     ];
-    final filtered = segments.where((segment) => segment != null && segment!.isNotEmpty).cast<String>();
+    final filtered = segments
+        .where((segment) => segment != null && segment.isNotEmpty)
+        .cast<String>();
     if (filtered.isEmpty) {
       return null;
     }

@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
 
-import '../../../domain/models/watermark_context.dart';
-import '../../../domain/models/watermark_element.dart';
-import '../../../domain/models/watermark_transform.dart';
-import 'watermark_element_widget.dart';
+import 'package:fmark_camera/src/domain/models/watermark_context.dart';
+import 'package:fmark_camera/src/domain/models/watermark_element.dart';
+import 'package:fmark_camera/src/presentation/camera/widgets/watermark_element_widget.dart';
 
 typedef ElementChanged = void Function(WatermarkElement element);
 typedef ElementSelected = void Function(String? elementId);
@@ -35,7 +34,8 @@ class WatermarkCanvas extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         final size = Size(constraints.maxWidth, constraints.maxHeight);
-        final orderedElements = [...elements]..sort((a, b) => a.zIndex.compareTo(b.zIndex));
+        final orderedElements = [...elements]
+          ..sort((a, b) => a.zIndex.compareTo(b.zIndex));
         return Stack(
           children: orderedElements.map((element) {
             return WatermarkElementWidget(
@@ -52,7 +52,9 @@ class WatermarkCanvas extends StatelessWidget {
               onOpacityChanged: (opacity) {
                 onElementChanged(element.copyWith(opacity: opacity));
               },
-              onDelete: onElementDeleted == null ? null : () => onElementDeleted!(element.id),
+              onDelete: onElementDeleted == null
+                  ? null
+                  : () => onElementDeleted!(element.id),
             );
           }).toList(),
         );

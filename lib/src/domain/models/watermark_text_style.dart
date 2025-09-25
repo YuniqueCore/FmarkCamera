@@ -36,11 +36,9 @@ class WatermarkTextStyle {
   }
 
   TextStyle asTextStyle() {
-    final backgroundPaint = background == null
-        ? null
-        : Paint()
-          ..color = background!
-          ..style = PaintingStyle.fill;
+    final backgroundPaint = background == null ? null : Paint()
+      ?..color = background!
+      ..style = PaintingStyle.fill;
     return TextStyle(
       fontSize: fontSize,
       fontWeight: fontWeight,
@@ -74,7 +72,8 @@ class WatermarkTextStyle {
     final offsetJson = shadowJson?['offset'] as Map<String, dynamic>?;
     return WatermarkTextStyle(
       fontSize: (json['fontSize'] as num?)?.toDouble() ?? 18,
-      fontWeight: FontWeight.values[(json['fontWeight'] as int?) ?? FontWeight.w600.index],
+      fontWeight: FontWeight
+          .values[(json['fontWeight'] as int?) ?? FontWeight.w600.index],
       color: Color((json['color'] as int?) ?? Colors.white.value),
       background: (json['background'] as int?) == null
           ? null
@@ -82,7 +81,8 @@ class WatermarkTextStyle {
       shadow: shadowJson == null
           ? null
           : Shadow(
-              color: Color((shadowJson['color'] as int?) ?? Colors.black54.value),
+              color:
+                  Color((shadowJson['color'] as int?) ?? Colors.black54.value),
               offset: Offset(
                 (offsetJson?['dx'] as num?)?.toDouble() ?? 0,
                 (offsetJson?['dy'] as num?)?.toDouble() ?? 0,
