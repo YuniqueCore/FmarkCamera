@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 
-import '../../services/bootstrapper.dart';
+import 'package:fmark_camera/src/services/bootstrapper.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key, required this.bootstrapper});

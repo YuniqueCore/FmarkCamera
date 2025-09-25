@@ -1,5 +1,5 @@
-import 'location_snapshot.dart';
-import 'weather_snapshot.dart';
+import 'package:fmark_camera/src/domain/models/location_snapshot.dart';
+import 'package:fmark_camera/src/domain/models/weather_snapshot.dart';
 
 class WatermarkContext {
   const WatermarkContext({

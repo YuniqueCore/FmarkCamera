@@ -75,7 +75,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
     final profiles = await _profileRepository.loadProfiles();
     final profile = profiles.firstWhere((item) => item.id == project.profileId,
         orElse: () => profiles.first);
-    final previewSize = const Size(1080, 1920);
+    const previewSize = Size(1080, 1920);
     final bytes = await _renderer.renderToBytes(
       profile: profile,
       context: _contextController.context,

@@ -2,10 +2,11 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
-import '../domain/models/weather_snapshot.dart';
+import 'package:fmark_camera/src/domain/models/weather_snapshot.dart';
 
 class WeatherService {
-  Future<WeatherSnapshot?> loadWeather({required double latitude, required double longitude}) async {
+  Future<WeatherSnapshot?> loadWeather(
+      {required double latitude, required double longitude}) async {
     final uri = Uri.parse(
       'https://api.open-meteo.com/v1/forecast?latitude=$latitude&longitude=$longitude&current=temperature_2m,weather_code',
     );

@@ -1,7 +1,7 @@
 import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
 
-import '../domain/models/location_snapshot.dart';
+import 'package:fmark_camera/src/domain/models/location_snapshot.dart';
 
 class LocationService {
   Future<LocationSnapshot?> resolveCurrentLocation() async {
