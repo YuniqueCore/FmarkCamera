@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fmark_camera/src/domain/models/watermark_media_type.dart';
@@ -16,8 +18,8 @@ void main() {
 
     test('composePhoto handles missing overlay', () async {
       final result = await exporter.composePhoto(
-        photoPath: '/nonexistent/photo.jpg',
-        overlayPath: '/nonexistent/overlay.png',
+        photo: WatermarkMediaInput.fromPath('/nonexistent/photo.jpg'),
+        overlay: WatermarkMediaInput.fromPath('/nonexistent/overlay.png'),
       );
       expect(result, isA<WatermarkExportResult>());
       expect(result.success, isFalse);
@@ -25,8 +27,8 @@ void main() {
 
     test('composeVideo handles missing overlay', () async {
       final result = await exporter.composeVideo(
-        videoPath: '/nonexistent/video.mp4',
-        overlayPath: '/nonexistent/overlay.png',
+        video: WatermarkMediaInput.fromPath('/nonexistent/video.mp4'),
+        overlay: WatermarkMediaInput.fromPath('/nonexistent/overlay.png'),
       );
       expect(result, isA<WatermarkExportResult>());
       expect(result.success, isFalse);
@@ -53,7 +55,7 @@ void main() {
 
     test('exportOriginal should handle non-existent source', () async {
       final result = await exporter.exportOriginal(
-        '/nonexistent/file.jpg',
+        WatermarkMediaInput.fromPath('/nonexistent/file.jpg'),
         mediaType: WatermarkMediaType.photo,
       );
       expect(result, isA<WatermarkExportResult>());
@@ -64,12 +66,14 @@ void main() {
       final testBytes = [1, 2, 3, 4, 5];
 
       // 测试各种文件名格式
+      final overlayInput =
+          WatermarkMediaInput.fromBytes(Uint8List.fromList(testBytes));
       final results = await Future.wait([
-        exporter.exportWatermarkPng(testBytes, suggestedName: 'test.png'),
-        exporter.exportWatermarkPng(testBytes, suggestedName: 'test'),
-        exporter.exportWatermarkPng(testBytes, suggestedName: ''),
-        exporter.exportWatermarkPng(testBytes, suggestedName: null),
-        exporter.exportWatermarkPng(testBytes, suggestedName: '  '), // 空格
+        exporter.exportWatermarkPng(overlayInput, suggestedName: 'test.png'),
+        exporter.exportWatermarkPng(overlayInput, suggestedName: 'test'),
+        exporter.exportWatermarkPng(overlayInput, suggestedName: ''),
+        exporter.exportWatermarkPng(overlayInput, suggestedName: null),
+        exporter.exportWatermarkPng(overlayInput, suggestedName: '  '), // 空格
       ]);
 
       for (final result in results) {
@@ -85,19 +89,19 @@ void main() {
       const exporter = WebWatermarkExporter();
 
       final photoResult = await exporter.composePhoto(
-        photoPath: '/any/path.jpg',
-        overlayPath: '/any/overlay.png',
+        photo: WatermarkMediaInput.fromPath('/any/path.jpg'),
+        overlay: WatermarkMediaInput.fromPath('/any/overlay.png'),
       );
       expect(photoResult.success, isFalse);
 
       final videoResult = await exporter.composeVideo(
-        videoPath: '/any/path.mp4',
-        overlayPath: '/any/overlay.png',
+        video: WatermarkMediaInput.fromPath('/any/path.mp4'),
+        overlay: WatermarkMediaInput.fromPath('/any/overlay.png'),
       );
       expect(videoResult.success, isFalse);
 
       final originalResult = await exporter.exportOriginal(
-        '/any/path.jpg',
+        WatermarkMediaInput.fromPath('/any/path.jpg'),
         mediaType: WatermarkMediaType.photo,
       );
       expect(originalResult.success, isFalse);
@@ -111,7 +115,7 @@ void main() {
       // 这些方法在 Web 上应该触发下载，但在测试环境中返回 null
       final overlayResult = await exporter.saveOverlayBytes(testBytes);
       final watermarkResult = await exporter.exportWatermarkPng(
-        testBytes,
+        WatermarkMediaInput.fromBytes(Uint8List.fromList(testBytes)),
         suggestedName: 'test.png',
       );
 
@@ -156,7 +160,7 @@ void main() {
 
       for (final name in specialNames) {
         final result = await exporter.exportWatermarkPng(
-          testBytes,
+          WatermarkMediaInput.fromBytes(Uint8List.fromList(testBytes)),
           suggestedName: name,
         );
         expect(result, isA<WatermarkExportResult>());
@@ -179,20 +183,20 @@ void main() {
       WatermarkExportResult? composedResult;
       if (overlayPath != null) {
         composedResult = await exporter.composePhoto(
-          photoPath: originalMediaPath,
-          overlayPath: overlayPath,
+          photo: WatermarkMediaInput.fromPath(originalMediaPath),
+          overlay: WatermarkMediaInput.fromPath(overlayPath),
         );
       }
 
       // 3. 导出原始文件
       final originalExportResult = await exporter.exportOriginal(
-        originalMediaPath,
+        WatermarkMediaInput.fromPath(originalMediaPath),
         mediaType: WatermarkMediaType.photo,
       );
 
       // 4. 导出单独的水印 PNG
       final watermarkPngResult = await exporter.exportWatermarkPng(
-        mockOverlayBytes,
+        WatermarkMediaInput.fromBytes(Uint8List.fromList(mockOverlayBytes)),
         suggestedName: 'watermark_test.png',
       );
 
@@ -210,12 +214,18 @@ void main() {
       // 多次调用相同的导出方法应该产生一致的结果
       final results1 = await Future.wait([
         exporter.saveOverlayBytes(testBytes),
-        exporter.exportWatermarkPng(testBytes, suggestedName: 'test.png'),
+        exporter.exportWatermarkPng(
+          WatermarkMediaInput.fromBytes(Uint8List.fromList(testBytes)),
+          suggestedName: 'test.png',
+        ),
       ]);
 
       final results2 = await Future.wait([
         exporter.saveOverlayBytes(testBytes),
-        exporter.exportWatermarkPng(testBytes, suggestedName: 'test.png'),
+        exporter.exportWatermarkPng(
+          WatermarkMediaInput.fromBytes(Uint8List.fromList(testBytes)),
+          suggestedName: 'test.png',
+        ),
       ]);
 
       // 虽然路径可能不同（因为使用了 UUID），但类型应该一致

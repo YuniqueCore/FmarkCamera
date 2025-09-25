@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'dart:io' show File;
-import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -437,9 +436,19 @@ class _CaptureDetailPageState extends State<_CaptureDetailPage> {
   }
 
   Future<void> _exportOriginal() async {
+    final mediaInput = _mediaInputForProject(_project);
+    if (mediaInput == null) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('未找到原始媒资文件')),
+      );
+      return;
+    }
     setState(() => _exporting = true);
     final result = await _exporter.exportOriginal(
-      _project.mediaPath,
+      mediaInput,
       mediaType: _project.mediaType,
     );
     setState(() => _exporting = false);
@@ -465,7 +474,7 @@ class _CaptureDetailPageState extends State<_CaptureDetailPage> {
       canvasSize: canvasSize.toSize(),
     );
     final result = await _exporter.exportWatermarkPng(
-      bytes,
+      WatermarkMediaInput.fromBytes(bytes),
       suggestedName: '${_profile.name}.png',
       options: const WatermarkExportOptions(
         destination: WatermarkExportDestination.filePicker,
@@ -493,12 +502,19 @@ class _CaptureDetailPageState extends State<_CaptureDetailPage> {
       context: _contextController.context,
       canvasSize: canvasSize.toSize(),
     );
-    String? overlayPath;
-    if (!kIsWeb) {
-      overlayPath = await _exporter.saveOverlayBytes(overlayBytes);
+    WatermarkMediaInput? overlayInput;
+    if (kIsWeb) {
+      overlayInput = WatermarkMediaInput.fromBytes(overlayBytes);
+    } else {
+      final overlayPath = await _exporter.saveOverlayBytes(overlayBytes);
+      if (overlayPath != null && overlayPath.isNotEmpty) {
+        overlayInput = WatermarkMediaInput.fromPath(overlayPath);
+      }
     }
-    overlayPath ??= _project.overlayPath;
-    if (overlayPath == null) {
+    overlayInput ??= _overlayInput(
+        overlayBytes: kIsWeb ? overlayBytes : null, project: _project);
+    final mediaInput = _mediaInputForProject(_project);
+    if (overlayInput == null || mediaInput == null) {
       setState(() => _exporting = false);
       if (!mounted) {
         return;
@@ -511,8 +527,8 @@ class _CaptureDetailPageState extends State<_CaptureDetailPage> {
     final WatermarkExportResult result;
     if (_project.mediaType == WatermarkMediaType.photo) {
       result = await _exporter.composePhoto(
-        photoPath: _project.mediaPath,
-        overlayPath: overlayPath,
+        photo: mediaInput,
+        overlay: overlayInput,
         options: WatermarkExportOptions(
           destination: WatermarkExportDestination.filePicker,
           suggestedFileName: '${_profile.name}_${_project.id}.jpg',
@@ -520,8 +536,8 @@ class _CaptureDetailPageState extends State<_CaptureDetailPage> {
       );
     } else {
       result = await _exporter.composeVideo(
-        videoPath: _project.mediaPath,
-        overlayPath: overlayPath,
+        video: mediaInput,
+        overlay: overlayInput,
         options: WatermarkExportOptions(
           destination: WatermarkExportDestination.filePicker,
           suggestedFileName: '${_profile.name}_${_project.id}.mp4',
