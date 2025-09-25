@@ -26,4 +26,18 @@ class LocationSnapshot {
       city: json['city'] as String?,
     );
   }
+
+  LocationSnapshot copyWith({
+    double? latitude,
+    double? longitude,
+    String? address,
+    String? city,
+  }) {
+    return LocationSnapshot(
+      latitude: latitude ?? this.latitude,
+      longitude: longitude ?? this.longitude,
+      address: address ?? this.address,
+      city: city ?? this.city,
+    );
+  }
 }

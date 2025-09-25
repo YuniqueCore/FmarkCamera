@@ -23,4 +23,26 @@ class WatermarkContext {
       weather: weather ?? this.weather,
     );
   }
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'now': now.toIso8601String(),
+        'location': location?.toJson(),
+        'weather': weather?.toJson(),
+      };
+
+  factory WatermarkContext.fromJson(Map<String, dynamic> json) {
+    return WatermarkContext(
+      now: DateTime.tryParse(json['now'] as String? ?? '') ?? DateTime.now(),
+      location: json['location'] == null
+          ? null
+          : LocationSnapshot.fromJson(
+              json['location'] as Map<String, dynamic>,
+            ),
+      weather: json['weather'] == null
+          ? null
+          : WeatherSnapshot.fromJson(
+              json['weather'] as Map<String, dynamic>,
+            ),
+    );
+  }
 }

@@ -31,6 +31,7 @@ class Bootstrapper {
     contextController = WatermarkContextController(
       locationService: locationService,
       weatherService: weatherService,
+      bootstrapper: this,
     );
     renderer = WatermarkRenderer();
     exporter = WatermarkExporterFactory.create();

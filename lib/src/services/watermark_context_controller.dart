@@ -6,16 +6,19 @@ import 'package:fmark_camera/src/domain/models/watermark_context.dart';
 import 'package:fmark_camera/src/domain/models/weather_snapshot.dart';
 import 'package:fmark_camera/src/services/location_service.dart';
 import 'package:fmark_camera/src/services/weather_service.dart';
+import 'package:fmark_camera/src/services/bootstrapper.dart';
 
 class WatermarkContextController extends ChangeNotifier {
   WatermarkContextController({
     required LocationService locationService,
     required WeatherService weatherService,
+    this.bootstrapper,
   })  : _locationService = locationService,
         _weatherService = weatherService;
 
   final LocationService _locationService;
   final WeatherService _weatherService;
+  final Bootstrapper? bootstrapper;
 
   WatermarkContext _context = WatermarkContext(now: DateTime.now());
   Timer? _timer;

@@ -29,4 +29,9 @@ class ProjectFileRepository implements ProjectRepository {
       projects.map((project) => project.toJson()).toList(),
     );
   }
+
+  @override
+  Future<void> invalidateCache() async {
+    _cache = null;
+  }
 }
