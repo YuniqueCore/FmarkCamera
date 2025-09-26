@@ -126,7 +126,7 @@ class _ProfileEditorScreenState extends State<ProfileEditorScreen> {
         children: [
           Expanded(
             child: Container(
-              color: Colors.black,
+              color: const Color(0xFF0F1114),
               child: Stack(
                 fit: StackFit.expand,
                 children: [
@@ -139,19 +139,30 @@ class _ProfileEditorScreenState extends State<ProfileEditorScreen> {
                       aspectRatio: _canvasSize.width / _canvasSize.height,
                       child: DecoratedBox(
                         decoration: BoxDecoration(
-                          color: Colors.black,
-                          border: Border.all(color: Colors.white24),
+                          color: const Color(0xFF1B1F24),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: Colors.white10),
+                          boxShadow: const [
+                            BoxShadow(
+                              color: Colors.black38,
+                              blurRadius: 12,
+                              offset: Offset(0, 6),
+                            ),
+                          ],
                         ),
-                        child: EditableWatermarkCanvas(
-                          elements: _profile.elements,
-                          contextData: _context,
-                          canvasSize: _canvasSize,
-                          selectedElementId: _selectedElementId,
-                          onElementSelected: (id) => setState(() {
-                            _selectedElementId = id;
-                          }),
-                          onElementChanged: _applyElement,
-                          onElementDeleted: _removeElement,
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(16),
+                          child: EditableWatermarkCanvas(
+                            elements: _profile.elements,
+                            contextData: _context,
+                            canvasSize: _canvasSize,
+                            selectedElementId: _selectedElementId,
+                            onElementSelected: (id) => setState(() {
+                              _selectedElementId = id;
+                            }),
+                            onElementChanged: _applyElement,
+                            onElementDeleted: _removeElement,
+                          ),
                         ),
                       ),
                     ),
@@ -1094,7 +1105,7 @@ class _GridPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = Colors.white12
+      ..color = const Color(0x33FFFFFF)
       ..style = PaintingStyle.stroke;
     const step = 0.1;
     for (double x = 0; x <= 1; x += step) {

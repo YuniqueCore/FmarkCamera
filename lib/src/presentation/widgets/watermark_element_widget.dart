@@ -245,23 +245,27 @@ class _WatermarkElementContent extends StatelessWidget {
   }
 
   Widget _buildText(String text, TextAlign align) {
-    final style = element.textStyle?.asTextStyle() ??
+    final baseStyle = element.textStyle?.asTextStyle() ??
         const TextStyle(
           fontSize: 16,
           color: Colors.white,
           fontWeight: FontWeight.w600,
         );
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.25),
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Text(
-        text,
-        textAlign: align,
-        style: style,
-      ),
+    final effectiveStyle =
+        (baseStyle.shadows == null || baseStyle.shadows!.isEmpty)
+            ? baseStyle.copyWith(
+                shadows: const [
+                  Shadow(
+                      color: Colors.black54,
+                      blurRadius: 6,
+                      offset: Offset(0, 2)),
+                ],
+              )
+            : baseStyle;
+    return Text(
+      text,
+      textAlign: align,
+      style: effectiveStyle,
     );
   }
 

@@ -8,7 +8,7 @@ plugins {
 android {
     namespace = "com.example.fmark_camera"
     compileSdk = 36
-    ndkVersion = flutter.ndkVersion
+    // ndkVersion = flutter.ndkVersion
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

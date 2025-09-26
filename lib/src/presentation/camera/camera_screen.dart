@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
@@ -87,6 +89,9 @@ class _CameraScreenState extends State<CameraScreen>
   bool _isRecording = false;
   bool _isVideoMode = false;
   Size? _lastSyncedCanvasSize;
+  FlashMode _flashMode = FlashMode.auto;
+  Offset? _focusIndicatorNormalized;
+  Timer? _focusIndicatorTimer;
 
   late final WatermarkProfilesController _profilesController;
   late final WatermarkProjectsController _projectsController;
@@ -156,6 +161,7 @@ class _CameraScreenState extends State<CameraScreen>
         enableAudio: true,
       );
       await controller.initialize();
+      await _applyFlashMode(controller);
       await _profilesController.ensureCanvasSize(
         _canvasSizeFromPreview(controller.value.previewSize),
         force: true,
@@ -164,6 +170,7 @@ class _CameraScreenState extends State<CameraScreen>
         _cameraController = controller;
         _isInitialized = true;
         _lastSyncedCanvasSize = null;
+        _focusIndicatorNormalized = null;
       });
     } catch (e) {
       if (!mounted) return;
@@ -183,6 +190,7 @@ class _CameraScreenState extends State<CameraScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _focusIndicatorTimer?.cancel();
     _cameraController?.dispose();
     super.dispose();
   }
@@ -218,6 +226,11 @@ class _CameraScreenState extends State<CameraScreen>
             title: const Text('Fmark Camera'),
             actions: [
               IconButton(
+                tooltip: _flashLabelForMode(_flashMode),
+                icon: Icon(_flashIconForMode(_flashMode)),
+                onPressed: _isInitialized ? _cycleFlashMode : null,
+              ),
+              IconButton(
                 tooltip: '管理 Profile',
                 icon: const Icon(Icons.layers_outlined),
                 onPressed: () => Navigator.of(context).pushNamed(
@@ -229,9 +242,27 @@ class _CameraScreenState extends State<CameraScreen>
                 icon: const Icon(Icons.edit_outlined),
                 onPressed: activeProfile == null
                     ? null
-                    : () {
+                    : () async {
                         final previewSize = controller.value.previewSize;
-                        Navigator.of(context).pushNamed(
+                        final orientation = MediaQuery.of(context).orientation;
+                        final effectiveSize = _effectivePreviewSize(
+                          previewSize,
+                          orientation,
+                        );
+                        final devicePixelRatio =
+                            MediaQuery.of(context).devicePixelRatio;
+                        final navigator = Navigator.of(context);
+                        if (!kIsWeb && controller.value.isInitialized) {
+                          try {
+                            await controller.pausePreview();
+                          } catch (error) {
+                            debugPrint('pausePreview skipped: $error');
+                          }
+                          if (!mounted) {
+                            return;
+                          }
+                        }
+                        await navigator.pushNamed(
                           ProfileEditorScreen.routeName,
                           arguments: ProfileEditorArguments(
                             profileId: activeProfile.id,
@@ -239,11 +270,23 @@ class _CameraScreenState extends State<CameraScreen>
                             fallbackCanvasSize: previewSize == null
                                 ? activeProfile.canvasSize
                                 : WatermarkCanvasSize(
-                                    width: previewSize.width,
-                                    height: previewSize.height,
+                                    width: effectiveSize.width,
+                                    height: effectiveSize.height,
+                                    pixelRatio: devicePixelRatio,
                                   ),
                           ),
                         );
+                        if (!mounted) {
+                          return;
+                        }
+                        if (_isRecording || kIsWeb) {
+                          return;
+                        }
+                        try {
+                          await _cameraController?.resumePreview();
+                        } catch (error) {
+                          debugPrint('resumePreview skipped: $error');
+                        }
                       },
               ),
               IconButton(
@@ -306,6 +349,77 @@ class _CameraScreenState extends State<CameraScreen>
     );
   }
 
+  IconData _flashIconForMode(FlashMode mode) {
+    switch (mode) {
+      case FlashMode.auto:
+        return Icons.flash_auto;
+      case FlashMode.always:
+        return Icons.flash_on;
+      case FlashMode.off:
+        return Icons.flash_off;
+      case FlashMode.torch:
+        return Icons.flashlight_on;
+    }
+  }
+
+  String _flashLabelForMode(FlashMode mode) {
+    switch (mode) {
+      case FlashMode.auto:
+        return '自动闪光';
+      case FlashMode.always:
+        return '闪光灯常亮';
+      case FlashMode.off:
+        return '闪光关闭';
+      case FlashMode.torch:
+        return '手电筒';
+    }
+  }
+
+  Future<void> _applyFlashMode(CameraController controller) async {
+    try {
+      await controller.setFlashMode(_flashMode);
+    } on CameraException catch (error) {
+      debugPrint('apply flash mode failed: ${error.code} ${error.description}');
+    } catch (error) {
+      debugPrint('apply flash mode failed: $error');
+    }
+  }
+
+  Future<void> _cycleFlashMode() async {
+    final controller = _cameraController;
+    if (controller == null || !controller.value.isInitialized) {
+      return;
+    }
+    final modes = <FlashMode>[
+      FlashMode.auto,
+      FlashMode.always,
+      FlashMode.off,
+      FlashMode.torch,
+    ];
+    final currentIndex = modes.indexOf(_flashMode);
+    final nextMode = modes[(currentIndex + 1) % modes.length];
+    try {
+      await controller.setFlashMode(nextMode);
+      setState(() => _flashMode = nextMode);
+    } on CameraException catch (error) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('切换闪光灯失败: ${error.description ?? error.code}'),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('切换闪光灯失败: $error')),
+      );
+    }
+  }
+
   Widget _buildPreviewLayer({
     required BuildContext context,
     required BoxConstraints constraints,
@@ -330,35 +444,125 @@ class _CameraScreenState extends State<CameraScreen>
         biggest.width.isFinite ? biggest.width : previewSize.width;
     final wrapperHeight =
         biggest.height.isFinite ? biggest.height : previewSize.height;
-    final preview = FittedBox(
-      fit: BoxFit.contain,
-      child: SizedBox(
-        width: previewSize.width,
-        height: previewSize.height,
-        child: CameraPreview(
-          controller,
-          child: activeProfile == null
-              ? const SizedBox.shrink()
-              : IgnorePointer(
-                  ignoring: true,
-                  child: SizedBox.expand(
-                    child: WatermarkCanvasView(
-                      elements: activeProfile.elements,
-                      contextData: contextData,
-                      canvasSize: canvasSize,
-                    ),
-                  ),
-                ),
-        ),
-      ),
-    );
+    final hasValidPreview = previewSize.width > 0 && previewSize.height > 0;
+    final scale = hasValidPreview
+        ? math.min(
+            wrapperWidth / previewSize.width,
+            wrapperHeight / previewSize.height,
+          )
+        : 1.0;
+    final displayWidth =
+        hasValidPreview ? previewSize.width * scale : wrapperWidth;
+    final displayHeight =
+        hasValidPreview ? previewSize.height * scale : wrapperHeight;
+    final horizontalPadding = (wrapperWidth - displayWidth) / 2;
+    final verticalPadding = (wrapperHeight - displayHeight) / 2;
+    final focusOffset = _focusIndicatorNormalized == null
+        ? null
+        : Offset(
+            horizontalPadding + _focusIndicatorNormalized!.dx * displayWidth,
+            verticalPadding + _focusIndicatorNormalized!.dy * displayHeight,
+          );
+
     return Center(
       child: SizedBox(
         width: wrapperWidth,
         height: wrapperHeight,
-        child: preview,
+        child: Stack(
+          children: [
+            Positioned(
+              left: horizontalPadding,
+              top: verticalPadding,
+              width: displayWidth,
+              height: displayHeight,
+              child: CameraPreview(controller),
+            ),
+            if (activeProfile != null)
+              Positioned(
+                left: horizontalPadding,
+                top: verticalPadding,
+                width: displayWidth,
+                height: displayHeight,
+                child: IgnorePointer(
+                  ignoring: true,
+                  child: WatermarkCanvasView(
+                    elements: activeProfile.elements,
+                    contextData: contextData,
+                    canvasSize: canvasSize,
+                  ),
+                ),
+              ),
+            Positioned(
+              left: horizontalPadding,
+              top: verticalPadding,
+              width: displayWidth,
+              height: displayHeight,
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTapDown: (details) => _handlePreviewTap(
+                  position: details.localPosition,
+                  displaySize: Size(displayWidth, displayHeight),
+                ),
+              ),
+            ),
+            if (focusOffset != null)
+              Positioned(
+                left: focusOffset.dx - 24,
+                top: focusOffset.dy - 24,
+                child: AnimatedOpacity(
+                  duration: const Duration(milliseconds: 120),
+                  opacity: _focusIndicatorNormalized == null ? 0 : 1,
+                  child: Container(
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white70, width: 2),
+                      boxShadow: const [
+                        BoxShadow(color: Colors.black54, blurRadius: 6),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
       ),
     );
+  }
+
+  Future<void> _handlePreviewTap({
+    required Offset position,
+    required Size displaySize,
+  }) async {
+    final controller = _cameraController;
+    if (controller == null || !controller.value.isInitialized) {
+      return;
+    }
+    final normalized = Offset(
+      (position.dx / displaySize.width).clamp(0.0, 1.0),
+      (position.dy / displaySize.height).clamp(0.0, 1.0),
+    );
+    try {
+      await controller.setFocusPoint(normalized);
+    } catch (error) {
+      debugPrint('Set focus point failed: $error');
+    }
+    try {
+      await controller.setExposurePoint(normalized);
+    } catch (error) {
+      debugPrint('Set exposure point failed: $error');
+    }
+    _focusIndicatorTimer?.cancel();
+    setState(() {
+      _focusIndicatorNormalized = normalized;
+    });
+    _focusIndicatorTimer = Timer(const Duration(seconds: 1), () {
+      if (!mounted) {
+        return;
+      }
+      setState(() => _focusIndicatorNormalized = null);
+    });
   }
 
   void _syncCanvasSizeIfNeeded(
@@ -566,6 +770,7 @@ class _CameraScreenState extends State<CameraScreen>
     final newController =
         CameraController(nextCamera, ResolutionPreset.high, enableAudio: true);
     await newController.initialize();
+    await _applyFlashMode(newController);
     await controller.dispose();
     await _profilesController.ensureCanvasSize(
       _canvasSizeFromPreview(newController.value.previewSize),
@@ -574,6 +779,7 @@ class _CameraScreenState extends State<CameraScreen>
     setState(() {
       _cameraController = newController;
       _lastSyncedCanvasSize = null;
+      _focusIndicatorNormalized = null;
     });
   }
 
