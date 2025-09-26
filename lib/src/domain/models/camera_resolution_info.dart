@@ -11,6 +11,8 @@ class CameraResolutionInfo {
   final double height;
 
   bool get isValid => width > 0 && height > 0;
+  double get aspectRatio => height == 0 ? 0 : width / height;
+  double get pixelCount => width * height;
 
   Size toSize() => Size(width, height);
 
@@ -24,6 +26,21 @@ class CameraResolutionInfo {
       width: (json['width'] as num?)?.toDouble() ?? 0,
       height: (json['height'] as num?)?.toDouble() ?? 0,
     );
+  }
+
+  @override
+  int get hashCode => Object.hash(width, height);
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) {
+      return true;
+    }
+    if (other is! CameraResolutionInfo) {
+      return false;
+    }
+    return (width - other.width).abs() < 0.5 &&
+        (height - other.height).abs() < 0.5;
   }
 
   @override

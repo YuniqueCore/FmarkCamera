@@ -5,6 +5,7 @@ import 'package:fmark_camera/src/data/repositories/watermark_profile_file_reposi
 import 'package:fmark_camera/src/data/storage/local_file_storage.dart';
 import 'package:fmark_camera/src/domain/repositories/project_repository.dart';
 import 'package:fmark_camera/src/domain/repositories/watermark_profile_repository.dart';
+import 'package:fmark_camera/src/services/camera_capabilities_service.dart';
 import 'package:fmark_camera/src/services/camera_settings_controller.dart';
 import 'package:fmark_camera/src/services/location_service.dart';
 import 'package:fmark_camera/src/services/watermark_context_controller.dart';
@@ -24,6 +25,7 @@ class Bootstrapper {
   late final LocationService locationService;
   late final WeatherService weatherService;
   late final WatermarkContextController contextController;
+  late final CameraCapabilitiesService cameraCapabilities;
   late final CameraSettingsController cameraSettingsController;
   late final WatermarkProfilesController profilesController;
   late final WatermarkProjectsController projectsController;
@@ -34,6 +36,7 @@ class Bootstrapper {
     storage = LocalFileStorage.create();
     profileRepository = WatermarkProfileFileRepository(storage);
     projectRepository = ProjectFileRepository(storage);
+    cameraCapabilities = CameraCapabilitiesService();
     final preferences = await SharedPreferences.getInstance();
     cameraSettingsController =
         CameraSettingsController(preferences: preferences);

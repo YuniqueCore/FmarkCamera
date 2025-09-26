@@ -13,6 +13,7 @@ import 'package:video_thumbnail/video_thumbnail.dart' as video_thumbnail;
 
 import 'package:fmark_camera/src/domain/models/camera_resolution_info.dart';
 import 'package:fmark_camera/src/domain/models/watermark_context.dart';
+import 'package:fmark_camera/src/services/camera_capabilities_service.dart';
 import 'package:fmark_camera/src/domain/models/watermark_media_type.dart';
 import 'package:fmark_camera/src/domain/models/watermark_profile.dart';
 import 'package:fmark_camera/src/domain/models/watermark_project.dart';
@@ -93,8 +94,10 @@ class _CameraScreenState extends State<CameraScreen>
   bool _isInitialized = false;
   bool _isRecording = false;
   bool _isVideoMode = false;
+  bool _isInitializing = false;
   Size? _lastSyncedCanvasSize;
   Size? _currentPreviewSize;
+  CameraResolutionInfo? _currentCaptureInfo;
   FlashMode _flashMode = FlashMode.auto;
   Offset? _focusIndicatorNormalized;
   Timer? _focusIndicatorTimer;
@@ -107,6 +110,7 @@ class _CameraScreenState extends State<CameraScreen>
   late final WatermarkContextController _contextController;
   late final WatermarkRenderer _renderer;
   late final WatermarkExporter _exporter;
+  late final CameraCapabilitiesService _capabilitiesService;
 
   @override
   void initState() {
@@ -120,6 +124,7 @@ class _CameraScreenState extends State<CameraScreen>
     _contextController = bootstrapper.contextController;
     _renderer = bootstrapper.renderer;
     _exporter = bootstrapper.exporter;
+    _capabilitiesService = bootstrapper.cameraCapabilities;
     _initialize();
   }
 
@@ -147,7 +152,7 @@ class _CameraScreenState extends State<CameraScreen>
   }
 
   Future<void> _toggleCaptureMode() async {
-    if (_isRecording) {
+    if (_isRecording || _isInitializing) {
       return;
     }
     setState(() {
@@ -156,50 +161,67 @@ class _CameraScreenState extends State<CameraScreen>
     await _initializeCamera();
   }
 
-  Future<void> _initializeCamera() async {
-    // Web 端需要特殊处理权限
-    if (kIsWeb) {
-      try {
-        // Web 端权限请求需要在用户手势中触发
-        final permission = await Permission.camera.request();
-        if (!permission.isGranted) {
-          if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('需要相机权限才能使用此功能'),
-              action: SnackBarAction(
-                label: '设置',
-                onPressed: openAppSettings,
-              ),
-            ),
-          );
-          return;
-        }
-      } catch (e) {
-        // Web 端权限 API 可能抛出异常，忽略并继续
-        debugPrint('Web camera permission check: $e');
-      }
-    } else {
-      final permission = await Permission.camera.request();
-      if (!permission.isGranted) {
+  Future<void> _initializeCamera({int? forcedIndex}) async {
+    if (_isInitializing) {
+      return;
+    }
+    _isInitializing = true;
+    try {
+      final hasPermission = await _ensureCameraPermission();
+      if (!hasPermission) {
         return;
       }
-    }
 
-    try {
-      _availableCameras = await availableCameras();
       if (_availableCameras.isEmpty) {
-        if (!mounted) return;
+        _availableCameras = await availableCameras();
+      } else {
+        try {
+          _availableCameras = await availableCameras();
+        } catch (error) {
+          debugPrint('availableCameras refresh failed: $error');
+        }
+      }
+      if (_availableCameras.isEmpty) {
+        if (!mounted) {
+          return;
+        }
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('未找到可用的相机')),
         );
         return;
       }
-      if (_cameraIndex >= _availableCameras.length) {
+
+      if (forcedIndex != null && forcedIndex >= 0) {
+        _cameraIndex = forcedIndex % _availableCameras.length;
+      } else if (_cameraIndex >= _availableCameras.length) {
         _cameraIndex = 0;
       }
       final camera = _availableCameras[_cameraIndex];
       final preset = _activePreset;
+
+      final previousController = _cameraController;
+      if (mounted) {
+        setState(() {
+          _cameraController = null;
+          _isInitialized = false;
+        });
+      } else {
+        _cameraController = null;
+        _isInitialized = false;
+      }
+      try {
+        await previousController?.dispose();
+      } catch (error) {
+        debugPrint('dispose previous controller failed: $error');
+      }
+
+      final capabilities = await _capabilitiesService.findById(camera.name);
+      final captureInfo = _selectCaptureInfo(
+        capabilities: capabilities,
+        preset: preset,
+        mode: _currentMode,
+      );
+
       final controller = CameraController(
         camera,
         preset,
@@ -207,50 +229,105 @@ class _CameraScreenState extends State<CameraScreen>
       );
       await controller.initialize();
       await _applyFlashMode(controller);
+
       final previewSize = controller.value.previewSize;
-      final effectivePreview = _canvasSizeFromPreview(previewSize);
+      final canvasSize = captureInfo == null
+          ? _canvasSizeFromPreview(previewSize)
+          : _canvasSizeFromCaptureInfo(captureInfo);
+
       await _profilesController.ensureCanvasSize(
-        effectivePreview,
+        canvasSize,
         force: true,
       );
-      final resolutionInfo = previewSize == null
-          ? null
-          : CameraResolutionInfo(
-              width: previewSize.width,
-              height: previewSize.height,
-            );
-      if (resolutionInfo != null) {
+
+      if (previewSize != null) {
         await _settingsController.savePreviewInfo(
           _currentMode,
           preset,
-          resolutionInfo,
+          CameraResolutionInfo(
+            width: previewSize.width,
+            height: previewSize.height,
+          ),
         );
+      }
+
+      if (!mounted) {
+        await controller.dispose();
+        return;
       }
       setState(() {
         _cameraController = controller;
         _isInitialized = true;
         _lastSyncedCanvasSize = null;
         _focusIndicatorNormalized = null;
-        _currentPreviewSize = effectivePreview.toSize();
+        _currentPreviewSize = canvasSize.toSize();
+        _currentCaptureInfo = captureInfo;
       });
+
       if (_currentMode == CameraCaptureMode.photo) {
         _lastAppliedPhotoPreset = preset;
       } else {
         _lastAppliedVideoPreset = preset;
       }
-    } catch (e) {
-      if (!mounted) return;
+    } on CameraException catch (error) {
+      if (!mounted) {
+        return;
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('相机初始化失败：$e'),
+          content: Text('相机初始化失败：${error.description ?? error.code}'),
           action: SnackBarAction(
             label: '重试',
-            onPressed: _initializeCamera,
+            onPressed: () => _initializeCamera(forcedIndex: forcedIndex),
           ),
         ),
       );
-      return;
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('相机初始化失败：$error'),
+          action: SnackBarAction(
+            label: '重试',
+            onPressed: () => _initializeCamera(forcedIndex: forcedIndex),
+          ),
+        ),
+      );
+    } finally {
+      _isInitializing = false;
     }
+  }
+
+  Future<bool> _ensureCameraPermission() async {
+    if (kIsWeb) {
+      try {
+        final permission = await Permission.camera.request();
+        if (permission.isGranted) {
+          return true;
+        }
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('需要相机权限才能使用此功能')),
+          );
+        }
+        return false;
+      } catch (error) {
+        debugPrint('Web camera permission check: $error');
+        return true;
+      }
+    }
+    final permission = await Permission.camera.request();
+    if (permission.isGranted) {
+      return true;
+    }
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('需要相机权限才能使用此功能')),
+      );
+    }
+    return false;
   }
 
   @override
@@ -407,18 +484,31 @@ class _CameraScreenState extends State<CameraScreen>
   WatermarkCanvasSize _fallbackCanvasSize() =>
       const WatermarkCanvasSize(width: 1080, height: 1920);
 
+  double _devicePixelRatio() {
+    final dispatcher = WidgetsBinding.instance.platformDispatcher;
+    final views = dispatcher.views;
+    if (views.isNotEmpty) {
+      return views.first.devicePixelRatio;
+    }
+    return dispatcher.implicitView?.devicePixelRatio ?? 1;
+  }
+
   WatermarkCanvasSize _canvasSizeFromPreview(Size? previewSize) {
     final size = previewSize ?? _fallbackCanvasSize().toSize();
-    final views = WidgetsBinding.instance.platformDispatcher.views;
-    final devicePixelRatio = views.isNotEmpty
-        ? views.first.devicePixelRatio
-        : (WidgetsBinding
-                .instance.platformDispatcher.implicitView?.devicePixelRatio ??
-            1);
     return WatermarkCanvasSize(
       width: size.width,
       height: size.height,
-      pixelRatio: devicePixelRatio,
+      pixelRatio: _devicePixelRatio(),
+    );
+  }
+
+  WatermarkCanvasSize _canvasSizeFromCaptureInfo(
+    CameraResolutionInfo info,
+  ) {
+    return WatermarkCanvasSize(
+      width: info.width,
+      height: info.height,
+      pixelRatio: _devicePixelRatio(),
     );
   }
 
@@ -502,32 +592,35 @@ class _CameraScreenState extends State<CameraScreen>
   }) {
     final mediaQuery = MediaQuery.of(context);
     final orientation = mediaQuery.orientation;
-    final previewSize = _effectivePreviewSize(
-      controller.value.previewSize,
-      orientation,
-    );
+    final previewSize = controller.value.previewSize;
+    final captureSize = _currentCaptureInfo != null
+        ? Size(_currentCaptureInfo!.width, _currentCaptureInfo!.height)
+        : previewSize;
+    final effectiveSize = _effectivePreviewSize(captureSize, orientation);
     final pixelRatio = mediaQuery.devicePixelRatio;
     final canvasSize = _resolveCanvasSize(
       activeProfile,
-      previewSize,
+      effectiveSize,
       pixelRatio,
     );
+
+    final targetSize = effectiveSize;
     final biggest = constraints.biggest;
     final wrapperWidth =
-        biggest.width.isFinite ? biggest.width : previewSize.width;
+        biggest.width.isFinite ? biggest.width : targetSize.width;
     final wrapperHeight =
-        biggest.height.isFinite ? biggest.height : previewSize.height;
-    final hasValidPreview = previewSize.width > 0 && previewSize.height > 0;
-    final scale = hasValidPreview
+        biggest.height.isFinite ? biggest.height : targetSize.height;
+    final hasValidTarget = targetSize.width > 0 && targetSize.height > 0;
+    final scale = hasValidTarget
         ? math.min(
-            wrapperWidth / previewSize.width,
-            wrapperHeight / previewSize.height,
+            wrapperWidth / targetSize.width,
+            wrapperHeight / targetSize.height,
           )
         : 1.0;
     final displayWidth =
-        hasValidPreview ? previewSize.width * scale : wrapperWidth;
+        hasValidTarget ? targetSize.width * scale : wrapperWidth;
     final displayHeight =
-        hasValidPreview ? previewSize.height * scale : wrapperHeight;
+        hasValidTarget ? targetSize.height * scale : wrapperHeight;
     final horizontalPadding = (wrapperWidth - displayWidth) / 2;
     final verticalPadding = (wrapperHeight - displayHeight) / 2;
     final focusOffset = _focusIndicatorNormalized == null
@@ -536,6 +629,8 @@ class _CameraScreenState extends State<CameraScreen>
             horizontalPadding + _focusIndicatorNormalized!.dx * displayWidth,
             verticalPadding + _focusIndicatorNormalized!.dy * displayHeight,
           );
+
+    final previewSourceSize = previewSize ?? targetSize;
 
     return Center(
       child: SizedBox(
@@ -548,7 +643,16 @@ class _CameraScreenState extends State<CameraScreen>
               top: verticalPadding,
               width: displayWidth,
               height: displayHeight,
-              child: CameraPreview(controller),
+              child: ClipRect(
+                child: FittedBox(
+                  fit: BoxFit.cover,
+                  child: SizedBox(
+                    width: previewSourceSize.width,
+                    height: previewSourceSize.height,
+                    child: CameraPreview(controller),
+                  ),
+                ),
+              ),
             ),
             if (activeProfile != null)
               Positioned(
@@ -642,12 +746,14 @@ class _CameraScreenState extends State<CameraScreen>
     BuildContext context,
     CameraController controller,
   ) {
-    final preview = controller.value.previewSize;
-    if (preview == null || !mounted) {
+    final orientation = MediaQuery.of(context).orientation;
+    final baseSize = _currentCaptureInfo != null
+        ? Size(_currentCaptureInfo!.width, _currentCaptureInfo!.height)
+        : controller.value.previewSize;
+    if (baseSize == null || !mounted) {
       return;
     }
-    final orientation = MediaQuery.of(context).orientation;
-    final effective = _effectivePreviewSize(preview, orientation);
+    final effective = _effectivePreviewSize(baseSize, orientation);
     if (_lastSyncedCanvasSize != null) {
       final last = _lastSyncedCanvasSize!;
       if ((last.width - effective.width).abs() < 0.5 &&
@@ -838,101 +944,20 @@ class _CameraScreenState extends State<CameraScreen>
   }
 
   Future<void> _switchCamera() async {
-    if (_availableCameras.length < 2) {
+    if (_availableCameras.length < 2 || _isRecording || _isInitializing) {
       return;
     }
     final controller = _cameraController;
-    if (controller == null) {
-      return;
+    int nextIndex;
+    if (controller == null || !controller.value.isInitialized) {
+      nextIndex = (_cameraIndex + 1) % _availableCameras.length;
+    } else {
+      final currentIndex = _availableCameras.indexOf(controller.description);
+      nextIndex = currentIndex < 0
+          ? (_cameraIndex + 1) % _availableCameras.length
+          : (currentIndex + 1) % _availableCameras.length;
     }
-    if (_isRecording) {
-      if (!mounted) {
-        return;
-      }
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('录制中无法切换摄像头')),
-      );
-      return;
-    }
-    var currentIndex = _availableCameras.indexOf(controller.description);
-    if (currentIndex < 0) {
-      currentIndex = _cameraIndex;
-    }
-    final nextIndex = (currentIndex + 1) % _availableCameras.length;
-    final nextCamera = _availableCameras[nextIndex];
-
-    setState(() {
-      _isInitialized = false;
-    });
-
-    CameraController? newController;
-    try {
-      newController = CameraController(
-        nextCamera,
-        _activePreset,
-        enableAudio: _currentMode == CameraCaptureMode.video,
-      );
-      await newController.initialize();
-      await _applyFlashMode(newController);
-      final previewSize = newController.value.previewSize;
-      final effectivePreview = _canvasSizeFromPreview(previewSize);
-      await _profilesController.ensureCanvasSize(
-        effectivePreview,
-        force: true,
-      );
-      if (previewSize != null) {
-        await _settingsController.savePreviewInfo(
-          _currentMode,
-          _activePreset,
-          CameraResolutionInfo(
-            width: previewSize.width,
-            height: previewSize.height,
-          ),
-        );
-      }
-      final previousController = _cameraController;
-      if (!mounted) {
-        await newController.dispose();
-        return;
-      }
-      setState(() {
-        _cameraIndex = nextIndex;
-        _cameraController = newController;
-        _isInitialized = true;
-        _lastSyncedCanvasSize = null;
-        _focusIndicatorNormalized = null;
-        _currentPreviewSize = effectivePreview.toSize();
-      });
-      if (_currentMode == CameraCaptureMode.photo) {
-        _lastAppliedPhotoPreset = _activePreset;
-      } else {
-        _lastAppliedVideoPreset = _activePreset;
-      }
-      await previousController?.dispose();
-    } on CameraException catch (error) {
-      await newController?.dispose();
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _isInitialized = controller.value.isInitialized;
-      });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('切换摄像头失败：${error.description ?? error.code}'),
-        ),
-      );
-    } catch (error) {
-      await newController?.dispose();
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _isInitialized = controller.value.isInitialized;
-      });
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('切换摄像头失败：$error')));
-    }
+    await _initializeCamera(forcedIndex: nextIndex);
   }
 
   Future<void> _capturePhoto() async {
@@ -994,7 +1019,7 @@ class _CameraScreenState extends State<CameraScreen>
           path: file.path,
           mediaType: WatermarkMediaType.video,
           previewSize: controller.value.previewSize,
-          captureSize: null,
+          captureSize: _currentCaptureInfo?.toSize(),
           aspectRatio: controller.value.aspectRatio,
           profile: profile,
           thumbnailData: thumbnailData,
@@ -1110,16 +1135,15 @@ class _CameraScreenState extends State<CameraScreen>
     String? thumbnailData,
   }) async {
     final contextData = _contextController.context;
+    final sizeFromController = captureSize ?? _currentCaptureInfo?.toSize();
     final WatermarkCanvasSize baseCanvas;
-    if (captureSize != null &&
-        captureSize.width > 0 &&
-        captureSize.height > 0) {
+    if (sizeFromController != null &&
+        sizeFromController.width > 0 &&
+        sizeFromController.height > 0) {
       baseCanvas = WatermarkCanvasSize(
-        width: captureSize.width,
-        height: captureSize.height,
-        pixelRatio: WidgetsBinding
-                .instance.platformDispatcher.implicitView?.devicePixelRatio ??
-            1,
+        width: sizeFromController.width,
+        height: sizeFromController.height,
+        pixelRatio: _devicePixelRatio(),
       );
     } else if (previewSize != null) {
       baseCanvas = _canvasSizeFromPreview(previewSize);
@@ -1166,4 +1190,89 @@ class _CameraScreenState extends State<CameraScreen>
     );
     await _projectsController.addProject(project);
   }
+}
+
+CameraResolutionInfo? _selectCaptureInfo({
+  required CameraDeviceCapabilities? capabilities,
+  required ResolutionPreset preset,
+  required CameraCaptureMode mode,
+}) {
+  final sizes = mode == CameraCaptureMode.photo
+      ? capabilities?.photoSizes
+      : capabilities?.videoSizes;
+  if (sizes == null || sizes.isEmpty) {
+    return null;
+  }
+  switch (preset) {
+    case ResolutionPreset.max:
+      return sizes.first;
+    case ResolutionPreset.ultraHigh:
+      return _pickResolution(
+            sizes,
+            minWidth: 3840,
+            minHeight: 2160,
+            preferredAspect: 16 / 9,
+          ) ??
+          sizes.first;
+    case ResolutionPreset.veryHigh:
+      return _pickResolution(
+            sizes,
+            minWidth: 1920,
+            minHeight: 1080,
+          ) ??
+          sizes.first;
+    case ResolutionPreset.high:
+      return _pickResolution(
+            sizes,
+            minWidth: 1280,
+            minHeight: 720,
+          ) ??
+          sizes.first;
+    case ResolutionPreset.medium:
+      return _pickResolution(
+            sizes,
+            minWidth: 720,
+            minHeight: 480,
+          ) ??
+          sizes.first;
+    case ResolutionPreset.low:
+      return sizes.last;
+  }
+}
+
+CameraResolutionInfo? _pickResolution(
+  List<CameraResolutionInfo> sizes, {
+  double? minWidth,
+  double? minHeight,
+  double? minPixels,
+  double? preferredAspect,
+}) {
+  for (final size in sizes) {
+    if (minWidth != null && size.width < minWidth) {
+      continue;
+    }
+    if (minHeight != null && size.height < minHeight) {
+      continue;
+    }
+    if (minPixels != null && size.pixelCount < minPixels) {
+      continue;
+    }
+    if (preferredAspect != null &&
+        !_isAspectClose(size.aspectRatio, preferredAspect)) {
+      continue;
+    }
+    return size;
+  }
+  if (preferredAspect != null) {
+    for (final size in sizes) {
+      if (_isAspectClose(size.aspectRatio, preferredAspect)) {
+        return size;
+      }
+    }
+  }
+  return null;
+}
+
+bool _isAspectClose(double value, double target) {
+  return (value - target).abs() < 0.12;
 }

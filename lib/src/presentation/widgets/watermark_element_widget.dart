@@ -299,22 +299,6 @@ class _EditableWatermarkElementState extends State<EditableWatermarkElement> {
                         ),
                       ),
                     ),
-                  if (widget.selected)
-                    Positioned(
-                      left: -16,
-                      right: -16,
-                      bottom: -56,
-                      child: _ElementToolbar(
-                        isLocked: widget.isLocked,
-                        onDelete: widget.onDelete,
-                        onNudge: _nudgePosition,
-                        onScale: _adjustScale,
-                        onRotate: _adjustRotation,
-                        nudgeStep: _nudgeStep,
-                        scaleStep: _scaleStep,
-                        rotationStep: _rotationStep,
-                      ),
-                    ),
                 ],
               ),
             ),
