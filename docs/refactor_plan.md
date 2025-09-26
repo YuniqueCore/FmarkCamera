@@ -1,271 +1,138 @@
-# Fmark Camera 重构方案（2025-09-25）
+# Fmark Camera 重构计划（更新：2025-09-26）
 
-## 目标
-- 按 AGENTS.md 还原产品体验：实时相机预览 + 分层水印；独立 Profile 编辑页与图库所见即所得；导出时支持带/不带水印。
-- 遵循 KISS/LISP，高内聚低耦合，面向接口编程，可继续扩展更多水印元素。
-- 重建 UI 页面结构，确保 Profile 编辑画布与相机预览尺寸一致，交互流畅可用。
+## 概览
+- 目标：实现分层水印拍摄体验，保持原始媒资纯净，支持水印 Profile 管理、所见即所得导出与跨端运行。
+- 方法论：遵循 KISS / LISP、高内聚低耦合、面向接口设计；复用现有 domain/service 分层，逐步替换展示层。
+- 当前重点平台：Android（主力验证）、Web（需补齐拍摄与导出链路）、macOS（可选调试）。
 
-## 架构分层
-- **domain**：沿用既有模型（WatermarkProfile/Element/Project 等），保持序列化能力。
-- **services**：
-  - `WatermarkProfilesController`：基于 Repository 的可观察状态，负责 Profile CRUD、激活、默认值、画布同步。
-  - `WatermarkProjectsController`：负责拍摄记录列表、缩略图缓存及更新。
-  - 现有 `WatermarkContextController`、`WatermarkRenderer`、`WatermarkExporter` 等继续复用。
-- **presentation**：划分为三个 feature 模块：
-  - `camera/`：主相机页面，负责拍照/录像、Profile 快速切换、跳转编辑页，叠加只读水印层。
-  - `profiles/`：
-    - `profiles_screen.dart`：Profile 列表管理，新建/复制/重命名/删除/设为默认。
-    - `profile_editor_screen.dart`：画布编辑器，提供元素增删改、拖拽缩放旋转、属性面板。
-  - `gallery/`：所见即所得图库，展示缩略图、预览、导出。
-  - `widgets/`：共用 `WatermarkLayer`（展示）与 `EditableWatermarkCanvas`（编辑）组件。
+## 架构摘要
+- **domain**：`WatermarkProfile`、`WatermarkElement`、`WatermarkProject` 等保持 JSON 序列化能力。
+- **services/controllers**：
+  - `WatermarkProfilesController` 管理 Profile CRUD、激活与画布尺寸同步。
+  - `WatermarkProjectsController` 维护拍摄记录、缩略图与导出状态。
+  - `WatermarkContextController`、`WatermarkRenderer`、`WatermarkExporter` 提供上下文、渲染与导出能力。
+  - 新增 `CameraCapabilitiesService`（Android）缓存真实拍照/录像分辨率，供相机与设置页使用。
+- **presentation**：`camera/`、`profiles/`、`gallery/` 模块化组织；`watermark_canvas.dart` / `watermark_element_widget.dart` 负责水印渲染与编辑交互。
+## 当前进展（截至 2025-09-26）
+- ✅ Android 真机可完成拍照/录像，Gallery CRUD 与导出流程可用。
+- ✅ 水印渲染与导出使用统一画布，图片导出比例与预览一致。
+- ✅ 摄像头切换流程已重构：初始化串行化、失败回退、预览画幅按捕获分辨率 letterbox 显示。
+- ✅ 新增 Android 平台通道（`MainActivity`）枚举可用分辨率，并在相机初始化时根据 `ResolutionPreset` 选择最接近的实际尺寸。
+- ⏳ 设置页仍基于枚举 `ResolutionPreset`；需接入 `CameraCapabilitiesService` 暴露的真实选项。
+- ⏳ Web 端仍存在拍照黑屏、导出受限等问题，尚未开始处理。
+- ⏳ 水印编辑器仍有多指缩放旋转精度、层级侧边栏等交互优化待办。
+## 近期主要改动
+1. **相机能力接入**：
+   - `android/app/src/main/kotlin/com/example/fmark_camera/MainActivity.kt` 增加 `getCameraCapabilities` MethodChannel，返回每个 cameraId 的照片/视频输出尺寸。
+   - `lib/src/services/camera_capabilities_service.dart` 提供能力缓存、查找与去重排序逻辑。
+   - `lib/src/services/bootstrapper.dart` 注入能力服务，供相机和后续设置界面复用。
+2. **画幅与导出对齐**：
+   - `lib/src/presentation/camera/camera_screen.dart` 在初始化与切换摄像头时选取实际捕获尺寸，预览层改用 `FittedBox + ClipRect` 保持 letterbox，`_storeCapture` / `_syncCanvasSizeIfNeeded` 使用捕获分辨率更新 Profile 与 Gallery。
+   - `lib/src/domain/models/camera_resolution_info.dart` 增加 `aspectRatio`、`pixelCount` 与宽高近似比较，便于分辨率筛选。
+3. **稳定性**：
+   - `_initializeCamera` 串行化处理，确保 dispose→initialize 顺序；失败时回滚 UI 状态并提示。
+   - `_switchCamera` 仅在非录制状态触发，直接重用 `_initializeCamera`，解决黑屏与无法恢复问题。
+## 待办清单
+1. **分辨率设置 UI**
+   - 将 `SettingsScreen` 的下拉项替换为基于能力服务的真实列表，展示像素与纵横比；持久化时需要区分照片/视频独立选择。
+   - 在 Profile 编辑/画布同步中记录当前配置，防止跨模式画幅错位。
+2. **Web 端拍摄与导出**
+   - 诊断 Web 相机黑屏（camera Web 支持）；确认是否需改用 `camera_web` 新版本或直接使用 `html` package 管理 `MediaStream`。
+   - 设计 Web 导出方案（如使用 `ffmpeg_wasm` 或 `Canvas` 合成）。
+3. **水印编辑器体验**
+   - 精确控制：为旋转/缩放提供显式控制柄，优化双指手势抖动问题。
+   - 层级管理：右侧添加 `ReorderableListView` 显示元素顺序，支持锁定/隐藏。
+   - 文本样式：字号输入框、字体选择、时间/地点/天气格式编辑。
+4. **图库体验**
+   - 根据项目绑定 Profile 渲染缓存缩略图；支持切换 Profile 后刷新预览。
+   - 导出弹窗支持快速选择“原图 / 带水印 / 仅水印 PNG”。
+5. **技术债 & 质量**
+   - 清理 `watermark_element_widget.dart` 中未使用的辅助字段与控件。
+   - 建立最小化回归脚本：`flutter analyze`、`flutter test`（待补单测）、关键流程手测清单。
+## 阶段性计划建议
+### Sprint 1（当前进行）
+- 完成设置页分辨率接入，确保 Profile / Gallery 画幅全链路一致。
+- 回归 Android 拍照、录像、导出、摄像头切换；补录日志与截图。
+- 整理未使用代码，保证 `flutter analyze` 仅保留必要告警。
 
-## 关键交互
-1. **Profile 编辑**
-   - 进入编辑页时，若 Profile 未设置 `canvasSize`，使用当前相机预览尺寸同步。
-  - 画布背景按等比缩放显示示例相机框（半透明蒙版 + 网格），元素拖拽/旋转/缩放均以归一化坐标保存。
-  - 属性面板包含：内容（文本/时间格式/地点开关/天气开关/图片选择）、样式（字号、加粗、调色板）、层级、删除。
-2. **相机页**
-   - 顶部操作区：Profile 列表入口、图库入口、设置等。
-   - 取景框：`Stack(CameraPreview, WatermarkLayer)`，随上下文变化实时刷新。
-   - 底部操作区：拍照/录像、模式切换、Profile 快捷切换 Chips。
-3. **图库**
-   - 加载 `WatermarkProject` 列表并根据绑定 Profile 渲染缩略图（缓存 Base64）。
-   - 查看详情时可切换 Profile 进行预览，导出带/不带水印或仅导出水印图层。
+### Sprint 2
+- 集中处理水印编辑器交互：旋转柄、层级列表、文本样式面板。
+- Web 相机兼容调查，决定技术路线并实现最小可用拍照。
 
-## 重构里程碑
-1. **状态层**：实现 `WatermarkProfilesController`、`WatermarkProjectsController`，Bootstrapper 中初始化。
-2. **UI 重建**：
-   - 替换旧的 Template & Editor 页面为新 `profiles_screen` + `profile_editor_screen`。
-   - 重写 `camera_screen` 接入控制器与新组件。
-   - 重写 `gallery_screen` 使用 Projects Controller。
-3. **组件复用**：抽象 `WatermarkLayer` 与 `EditableWatermarkCanvas`，支撑预览与编辑场景。
-4. **验证**：`flutter analyze`、重点交互手动回归（拖拽、录制、导出、切换 Profile）。
+### Sprint 3
+- Gallery 所见即所得优化、导出对话框完善、Profile 导出模板。
+- 评估自动化测试（Widget/Integration）可行性，至少补充关键业务单测。
+## 测试与验证
+- `flutter analyze`：当前仅剩水印编辑器未用元素相关告警；需在后续迭代处理。
+- 自动化测试：暂无；建议在交互稳定后补充最小 Widget 测试验证 Profile CRUD、渲染结果。
+- 手动回归：已在 Android 实机验证拍照、录像、导出（带/不带水印）及摄像头切换。
 
-> 本文档作为重构执行依据，后续若需求调整请同步更新。
-
-
-## 当前进度
-
-1. android app 处于基本可以运行，功能基本都有的状态
-2. 相机拍照，视频都是可以的，但是视频在 gallery 中的缩略图为黑色，应该获取第一帧的图片做为缩略图
-3. 导出功能也基本正常，能够导出图片和视频 (带水印/不带水印)
-4. 我们程序调用的相机/视频清晰度有点低，才 720*1280p, 我希望在设置中可以调整 (需要程序自动获取当前设备支持的像素、分辨率 (拍照，摄像))。
-5. 同时 gallery 有 crud 功能。但是输出的带水印的图片存在问题。具体差异请看 /Users/unic/dev/projs/flu/FmarkCamera/docs/snapshot 中图片 (export/actual-exported)。图片名则是对应的场景，简单来说就是导出时和软件内部预览时的水印比例是不一致的。(现在尚未解决，因为导出来的照片尺寸是 4:3 的，而我们程序的预览是 16:9 的), 我们应该根据用户相机的宽高比来生成相机预览取景框和缩略图等等.。
-6. 水印 profile 编辑功能基本正常，但是也同样存在一些问题。
-  1.~~水印元素点击之后，会出现 border, 但是这个 border 和元素存在偏差。同时拖动元素，也是有偏差的。也就是 border 中和元素展示位置存在偏差...这个问题很影响使用..请查看图片 (edit-watermark-profile)~~(已修复)
-  1. 编辑水印元素时，如果是文字类型的元素，都应该支持手动输入任意字符串。而不是只有 togglebutton 来控制该显示什么。同时，文本样式中，字体大小应该是支持输入，或者滑动条的。并且也应该显示当前的字体大小。(重点)
-  2. 当前的编辑水印的界面能够实现 item 的移动，缩放，旋转了，但是缩放和旋转还存在很大问题。我在双指缩放时会不断旋转...此外，item 被双指缩放过一次后，再想缩放时就很难触发了...旋转也是，后续触发存在很大问题。(推荐的解决办法，在选中 item 之后，border 四角出现对应的操作，目前是有个删除 button，这个删除 button 其实很难点击到...可以更换为旋转功能。而缩放功能依旧是双指缩放，旋转的话则是按住旋转按钮进行拖动旋转.)
-  3. 然后就是精细变换中的这些操纵，都应该做到画布中，就和常见的画布操作一样，移动、旋转、缩放、平移、拉伸等等。(重点)
-  4. 此外，层级调节，也应该增加一个侧边栏显示当前的 items 的层级顺序，同时侧边栏中的 items 也支持拖拽调节层级
-1. 在水印编辑 profile 界面中，还存在很影响使用的问题。那就是：当我想要更改水印元素的内容时，我点击水印元素之后，再点击惊喜调整，精细调整的界面从底部升起，然后我又点击精细调整中的 input 框，此刻准备输入内容，系统的键盘自动从底部弹出来了，但是输入框却没有同步上移，导致输入框等内容被键盘遮挡，看不到当前输入情况，,...需要修复。
-2. 相机界面上的切换摄像头存在问题.. 默认是后置摄像头，但是我点击切换摄像头之后，采景器的内容就变成黑色了。然后我再点击切换摄像头，采景器无法切回后置摄像头...只能退出程序，重新启动程序，才能恢复。
-3. 在添加了文本元素之后，更文本的内容时，输入内容之后，点击确定会报错：Failed assertion: line 6171 pos 14: '_dependcies.isEmpty': is not true, see also: https://docs.flutter.dev/testing/errors (需要修复这个问题), 当我在水印 profile 管理界面 duplicate 默认模版时，也会要求更新名字，这里也是输入框，我点击确认之后也报错了，但是 profile 其实成功 duplicate.
-  
-So, I think it’s better to refactor the watermark profile edit completely, or .. clear it completely and start from the fresh project and code as the AGENTS.md and refactor_plan.md described.
-
-and please use flutter libs to aid you do things better and quickly. you can search it online.
-
-you should use serena mcp tool, and use tavily / web search, desktop_commander and so on mcp tools to aid you do things better, If you have any question, you can query AGENTS.md and refactor_plan.md or search it online.
-
-# 整理项目结果
-
-- 已通过 Serena 激活 FmarkCamera 工程并梳理现有实现；定位到视频缩略图缺失、导出水印比例失真、编辑器交互偏差等关键问
-  题，建议按优先级推进重构。
-
-  问题定位
-
-  - 视频缩略图始终为黑屏：录像结束时已生成 thumbnailData（lib/src/presentation/camera/camera_screen.dart:830），但图库
-  预览 _buildMediaPreview 对视频分支仍返回占位容器，未解码 thumbnailData 或 overlayPath（lib/src/presentation/gallery/
-  gallery_screen.dart:217 及 402）。
-  - 导出水印与预览比例不一致：界面侧的文字组件带 12/6 padding（lib/src/presentation/widgets/
-  watermark_element_widget.dart:299），而导出渲染 _drawText 直接绘制文字，无边距/阴影匹配（lib/src/services/
-  watermark_renderer.dart:73-106），导致导出结果相对缩小。
-  - 水印元素选中框与实际位置错位：编辑态依赖 FractionalTranslation(-0.5,-0.5) 平移内容，但高亮框用 Positioned.fill 固定
-  在父布局，未同步偏移（lib/src/presentation/widgets/watermark_element_widget.dart:196-223），拖拽也因此发生位移偏差。
-  - 文本/样式编辑能力不足：文本内容虽支持输入，但字号仅滑杆显示、无精确输入；时间/地点/天气等底部面板只提供 toggle/
-  下拉。
-  - 键盘遮挡底部调参面板：多处 showModalBottomSheet 未设置 isScrollControlled 且缺少 viewInsets 填充（lib/src/
-  presentation/profiles/profile_editor_screen.dart:500-957），软键盘弹出时内容被覆盖。
-  - 精细变换与层级调节体验弱：精细调整表单仅靠数值输入（873），层级面板是按钮式上下移动（957），不支持画布内微调或列表
-  拖拽。
-  - 切换摄像头黑屏：_switchCamera 直接 dispose 旧控制器再赋值新实例（lib/src/presentation/camera/camera_screen.dart:759-
-  781），缺乏错误处理/状态复位；若 initialize 抛错会留下空 controller，后续也未恢复 _isInitialized。
-
-  建议行动
-
-  1. 更新图库 _buildMediaPreview 视频分支：优先解码 project.thumbnailData（若无则临时生成第一帧），并在详情页同样复用。
-  2. 抽出水印渲染统一组件，复用 UI 中的 padding/shadow 样式；同时允许自定义全局 inset，确保导出与预览一致。
-  3. 重构 EditableWatermarkElement：以 Transform.translate 或 Matrix4 统一处理中心点，兼顾选中框；考虑引入
-  matrix_gesture_detector 提升多指操控精度。
-  4. 引入画布内「辅助面板」：在编辑页右侧新增图层列表（ReorderableListView）展示/调整顺序，实现锁定/眼睛等操作，满足层级
-  管理诉求。
-  5. 优化属性面板：所有 showModalBottomSheet 改为 isScrollControlled: true + DraggableScrollableSheet，并在内容外包
-  Padding(MediaQuery.of(context).viewInsets)；文本样式区增加数字输入框、可选字体。
-  6. 相机切换逻辑增加 try-catch 和回退：若新控制器初始化失败即恢复旧控制器；切换后重新同步 canvas 尺寸并刷新
-  _isInitialized 状态。
-  7. 在重构前可先编写回归清单（拖拽、缩放、导出、切换摄像头、键盘覆盖等）并准备自动化/手测计划；同时考虑记录真实拍摄分辨
-  率，用于验证导出尺寸。
-
-  信息缺口与验证
-
-  - 需在真机/Web 上复现确认：摄像头切换失败时的异常日志、导出前后的实际分辨率、键盘遮挡的具体界面。可通过 flutter logs
-  及截图收集后再针对性调试。
-  - 若后续计划包括大幅重构画布交互，建议先评估是否引入第三方库（如 matrix_gesture_detector）以减少自研成本。
-  - 
-下一步建议
-
-  1. 若同意上述方案，可先实现视频缩略图与文本渲染对齐这两项快速收益，再推进编辑器交互重构。
-  2. 建议在 git 中创建工作分支，并为重构前后准备快照/录屏以便回归比较。
-  3. 若需要我继续撰写具体修改方案或代码草稿，请明确优先级和可写入权限
-
-核心结论
-  图库缩略图、分层水印渲染与相机切换已全面修复，编辑器交互也同步提升，可直接继续开发或回归测试。
-
-  - lib/src/presentation/gallery/gallery_screen.dart:22 新增 _videoThumbnailForProject 并在图库/详情页统一调用，解决视频
-  缩略图黑屏且复用缓存的首帧预览。
-  - lib/src/services/watermark_renderer.dart:120、lib/src/presentation/widgets/watermark_element_widget.dart:40 与 lib/
-  src/presentation/widgets/watermark_canvas.dart:33 对齐水印渲染：共享对齐算法、补齐文本内边距、规范图片基准尺寸，确保实
-  时预览与导出比例一致。
-  - lib/src/presentation/profiles/profile_editor_screen.dart:125 重构编辑页为画布 + 侧边栏布局，引入可拖拽的层级列表（1028
-  起）、锁定开关与所见即所得缩略图；同时在 _openTimeSheet 与 _openTransformSheet（508, 873）中启用 isScrollControlled 与
-  viewInsets 以修复键盘遮挡。
-  - lib/src/presentation/widgets/watermark_element_widget.dart:180 调整可编辑元素对齐方式，选中框与实际内容严格重合，拖
-  拽/缩放旋转手势保持同步。
-  - lib/src/presentation/camera/camera_screen.dart:759 为摄像头切换加入录制状态保护、初始化失败回滚与错误提示，消除黑屏
-  和无法恢复的问题。
-
-  测试
-
-  - flutter analyze（通过，无告警）
-
-  限制 / 后续建议
-
-  - 建议在真机与 Web 环境分别回归录制/切换流程，确认不同硬件下的表现。
-  - 若需要进一步精细操作，可评估在画布上增加旋转/缩放专用控制柄或数值微调快捷键。
-结论：已在 Android 端补齐摄像头能力枚举通道，并重构相机初始化/预览渲染，预览画幅与导出图片一致，切换前后摄不再黑屏；后
-  续需要把新分辨率数据接入设置界面。
-
-  - android/app/src/main/kotlin/com/example/fmark_camera/MainActivity.kt:14-82：新增 MethodChannel
-  com.example.fmark_camera/capabilities，通过 CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP 拉取照片/视频输出尺
-  寸列表，为 Dart 侧提供真实能力数据。citeturn1search1
-  - lib/src/services/camera_capabilities_service.dart:7-105：新增能力服务，缓存解析 channel 返回的分辨率信息，并提供
-  findById/loadCapabilities API。
-  - lib/src/services/bootstrapper.dart:22-59：注入 CameraCapabilitiesService，便于相机页面与后续设置页共享能力数据。
-  - lib/src/domain/models/camera_resolution_info.dart:7-48：补充 aspectRatio/pixelCount 及相等判断，为分辨率选型与缓存比
-  对提供基础值对象支持。
-  - lib/src/presentation/camera/camera_screen.dart:164-1250：
-      - 初始化前统一申请权限、串行化 _isInitializing 流程，并在启动新 CameraController 前显式 dispose 旧实例，切换前后摄
-  稳定（_initializeCamera / _switchCamera）。
-      - 根据能力列表挑选与 ResolutionPreset 对应的目标尺寸，记录 _currentCaptureInfo 并将其同步到 Profile/Gallery；预览
-  叠加层改用 FittedBox+ClipRect 按真实画幅居中呈现，_syncCanvasSizeIfNeeded/_storeCapture/_buildPreviewLayer 均围绕捕获
-  尺寸调整。
-      - 录像场景写入 _currentCaptureInfo，图片/视频项目保存时 canvas 与 overlay 均以捕获分辨率绘制，导出比例与所见一致。
-  - 运行 flutter analyze 时仍存在既有的 watermark_element_widget.dart 未用字段/方法警告（后续重构编辑器时一并处理），新
-  改动未引入新增告警。
-
-  后续建议
-
-  1. 在设置页使用 CameraCapabilitiesService 输出的分辨率集合，替换现有 ResolutionPreset 下拉文案，允许用户按真实格式
-  选择。
-  2. 针对编辑器遗留的未用字段/工具栏逻辑做清理或改造，消除分析告警。
-  3. 实机回归：不同分辨率下拍照/录像、切换摄像头、导出带/不带水印、Gallery 缩略图。
+## 参考资料
+- 产品 PRD / 指南：`AGENTS.md`
+- 旧版本截图与对比：`docs/snapshot/`
+- 构建与验证：`docs/macos_build_and_test.md`
 
 
+# Fmark Camera 重构方案（更新：2025-09-26）
 
-So, I think it’s better to refactor the watermark profile edit completely, or .. clear it completely and start from the fresh project and code as the AGENTS.md and refactor_plan.md described.
+## 目标与原则
+- 还原 AGENTS.md 所述体验：实时相机预览叠加分层水印，Profile 独立编辑，Gallery 所见即所得，导出可选择带/不带水印。
+- 坚持 KISS / LISP、高内聚低耦合、面向接口扩展；在保留现有 domain/service 的前提下迭代 presentation 层。
+- 兼顾 Android 主线可用性与 Web 版本的补齐，注意跨端能力差异。
 
-and please use flutter libs to aid you do things better and quickly. you can search it online.
+## 架构分层（现状）
+- **domain**：`WatermarkProfile`、`WatermarkElement`、`WatermarkProject` 等模型维持 JSON 序列化；数据结构稳定。
+- **services / controllers**：
+  - `WatermarkProfilesController`、`WatermarkProjectsController` 已接管 Profile 与拍摄记录的状态管理。
+  - `WatermarkContextController`、`WatermarkRenderer`、`WatermarkExporter` 继续负责上下文、渲染与导出；导出仍依赖 FFmpeg Kit（移动端）与 wasm（Web 待实现）。
+  - 新增 `CameraCapabilitiesService`（Android）通过平台通道读取每个 cameraId 的照片/视频分辨率，为后续设置页/画布同步提供真实参数。
+- **presentation**：`camera/`、`profiles/`、`gallery/` 模块化拆分；`watermark_canvas.dart` 负责渲染，`watermark_element_widget.dart` 负责交互。
 
-you should use serena mcp tool, and use tavily / web search, desktop_commander and so on mcp tools to aid you do things better, If you have any question, you can query AGENTS.md and refactor_plan.md or search it online.
+## 当前状态
+### 已完成
+1. **Android 拍摄主线**：真机拍照/录像、Gallery CRUD、带/不带水印导出均可执行。
+2. **画幅同步**：相机预览与导出统一使用捕获分辨率；`CameraPreview` 使用 `FittedBox + ClipRect` letterbox，Gallery/导出所见一致。
+3. **摄像头切换稳定化**：切换流程串行化、失败回滚，避免黑屏无法恢复；日志仍显示 CameraX 重开，但预览可恢复。
+4. **捕获能力查询**：Android 端新增 MethodChannel 返回真实输出尺寸，Dart 侧完成解析与缓存。
 
-## 当前进度
+### 仍存在 / 待确认
+1. **分辨率设置页**：UI 仍显示 `ResolutionPreset`，尚未接入真实分辨率列表；切换模式时 Profile 画布需与用户选择同步。
+2. **Web 端流程**：仍存在相机黑屏、导出能力缺失；尚未验证摄像权限与 `camera_web` 兼容性。
+3. **水印编辑器体验**：多指缩放/旋转精度不足，缺少显式控制柄；层级管理、文本样式面板仍需重构。
+4. **Gallery 缩略图**：视频缩略图在部分设备仍可能黑屏，需对 `thumbnailData` 缓存与生成策略回归验证。
+5. **代码健康**：`watermark_element_widget.dart` 保留若干未使用字段/方法；`flutter analyze` 仍给出相关警告。
 
-1. android app 处于基本可以运行，功能基本都有的状态
-2. 相机拍照，视频都是可以的，~~但是视频在 gallery 中的缩略图为黑色，应该获取第一帧的图片做为缩略图~~(已经完成)
-3. 导出功能也基本正常，能够导出图片和视频 (带水印/不带水印)
-4. 我们程序调用的相机/视频清晰度有点低，才 720*1280p, 我希望在设置中可以调整 (需要程序自动获取当前设备支持的像素、分辨率 (拍照，摄像))。当前设置中分辨率 MAX 其实不对，也就是获取设备支持的分辨率的方法是错误的。我认为这个应该有成熟的 lib, 请你 search it online, 使用成熟的 lib，或者上网找找更好的，更正确的实现。
-5. 同时 gallery 有 crud 功能。但是输出的带水印的图片存在问题。具体差异请看 /Users/unic/dev/projs/flu/FmarkCamera/docs/snapshot 中图片 (export/actual-exported)。图片名则是对应的场景，简单来说就是导出时和软件内部预览时的水印比例是不一致的。(现在尚未解决，因为导出来的照片尺寸是 4:3 的，而我们程序的预览是 16:9 的), 我们应该根据用户相机的宽高比来生成相机预览取景框和缩略图等等.。依旧存在问题。
-6. 水印 profile 编辑功能基本正常，但是也同样存在一些问题。
-  1.~~水印元素点击之后，会出现 border, 但是这个 border 和元素存在偏差。同时拖动元素，也是有偏差的。也就是 border 中和元素展示位置存在偏差...这个问题很影响使用..请查看图片 (edit-watermark-profile)~~(已修复)
-  1. 编辑水印元素时，如果是文字类型的元素，都应该支持手动输入任意字符串。而不是只有 togglebutton 来控制该显示什么。同时，文本样式中，字体大小应该是支持输入，或者滑动条的。并且也应该显示当前的字体大小。(重点)
-  2. 当前的编辑水印的界面能够实现 item 的移动，缩放，旋转了，但是缩放和旋转还存在很大问题。我在双指缩放时会不断旋转...此外，item 被双指缩放过一次后，再想缩放时就很难触发了...旋转也是，后续触发存在很大问题。(推荐的解决办法，在选中 item 之后，border 四角出现对应的操作，目前是有个删除 button，这个删除 button 其实很难点击到...可以更换为旋转功能。而缩放功能依旧是双指缩放，旋转的话则是按住旋转按钮进行拖动旋转... 现在旋转之后有层很没必要的删除，上下左右，旋转，缩放的 toolbox, 并且这个 toolbox 并不能正常工作.... 我只需要 boarder+ 旋转按钮)
-  3. 然后就是精细变换中的这些操纵，都应该做到画布中，就和常见的画布操作一样，移动、旋转、缩放、平移、拉伸等等。(重点)
-  4. 此外，层级调节，也应该增加一个侧边栏显示当前的 items 的层级顺序，同时侧边栏中的 items 也支持拖拽调节层级
-1. ~~在水印编辑 profile 界面中，还存在很影响使用的问题。那就是：当我想要更改水印元素的内容时，我点击水印元素之后，再点击惊喜调整，精细调整的界面从底部升起，然后我又点击精细调整中的 input 框，此刻准备输入内容，系统的键盘自动从底部弹出来了，但是输入框却没有同步上移，导致输入框等内容被键盘遮挡，看不到当前输入情况，,~~(已经修复)。
-2. 相机界面上的切换摄像头存在问题.. 默认是后置摄像头，但是我点击切换摄像头之后，采景器的内容就变成黑色了。然后我再点击切换摄像头，采景器无法切回后置摄像头...只能退出程序，重新启动程序，才能恢复。
-3. ~~在添加了文本元素之后，更文本的内容时，输入内容之后，点击确定会报错：Failed assertion: line 6171 pos 14: '_dependcies.isEmpty': is not true, see also: https://docs.flutter.dev/testing/errors (需要修复这个问题), 当我在水印 profile 管理界面 duplicate 默认模版时，也会要求更新名字，这里也是输入框，我点击确认之后也报错了，但是 profile 其实成功 duplicate~~(已经修复).
+## 关键问题 & 观察
+- **摄像头重开日志**：切换摄像头仍输出大量 `PENDING_OPEN` → `OPENING` 日志，需要进一步排查是否存在资源占用或权限限制（见 2025-09-26 提供的 log）。
+- **画幅不一致反馈**：历史问题源于导出使用固定 4:3，需要继续在不同分辨率（4:3、16:9、21:9）下回归，确认新逻辑覆盖。
+- **Web 权限/兼容性**：需在 Chrome/Edge 下复现黑屏情况，确认是否为浏览器权限、设备不支持或插件缺陷。
 
+## 最近一次迭代主要改动
+1. **相机能力通道**（Android）：`MainActivity.kt` 新增 `getCameraCapabilities`；`CameraCapabilitiesService` 解析并缓存分辨率列表；`Bootstrapper` 注入服务。
+2. **相机预览 & 存储对齐**：`camera_screen.dart` 中 `_initializeCamera`、`_switchCamera`、`_storeCapture`、`_buildPreviewLayer`、`_syncCanvasSizeIfNeeded` 全面改写，统一使用 `_currentCaptureInfo` 与捕获尺寸。
+3. **模型增强**：`CameraResolutionInfo` 追加 `aspectRatio`、`pixelCount`、近似相等判断，支撑分辨率筛选与缓存比较。
 
-# runtime logs
+## 下一步计划
+### Sprint 1（进行中）
+- 将 `SettingsScreen` 下拉改为真实分辨率列表（区分照片/视频）；同步 Profile 画布与 Gallery 列表。
+- Android 回归：不同分辨率下拍照、录像、导出、摄像头切换；记录截图与日志。
+- 清理 `watermark_element_widget.dart` 未使用代码，保持 `flutter analyze` 仅保留必要警告。
 
-当我点击切换摄像头时，控制台会打印如下日志，并且取景框还是黑色。
-但是我实际拍照的时候，在 gallery 中的预览是正常的....
-D/UseCaseAttachState(12659): Active and attached use case: [androidx.camera.core.ImageCapture-4cd0329a-9044-4036-a274-928a11d52c403362649, androidx.camera.core.Preview-e31ef3f9-df46-454e-ba9f-d26d62e4a909153407442] for camera: 0
-D/Camera2CameraImpl(12659): {Camera@8fdf67a[id=0]} Use case androidx.camera.core.ImageAnalysis-9c13efe6-423d-43da-9219-36ec3229b642268056784 INACTIVE
-D/UseCaseAttachState(12659): Active and attached use case: [androidx.camera.core.ImageCapture-4cd0329a-9044-4036-a274-928a11d52c403362649, androidx.camera.core.Preview-e31ef3f9-df46-454e-ba9f-d26d62e4a909153407442] for camera: 0
-D/DeferrableSurface(12659): use count-1,  useCount=0 closed=true androidx.camera.core.SurfaceRequest$2@1b751bb
-D/DeferrableSurface(12659): Surface no longer in use[total_surfaces=7, used_surfaces=3](androidx.camera.core.SurfaceRequest$2@1b751bb}
-D/DeferrableSurface(12659): Surface terminated[total_surfaces=6, used_surfaces=3](androidx.camera.core.SurfaceRequest$2@1b751bb}
-D/DeferrableSurface(12659): use count-1,  useCount=0 closed=true androidx.camera.core.impl.ImmediateSurface@7e8286d
-D/DeferrableSurface(12659): Surface no longer in use[total_surfaces=6, used_surfaces=2](androidx.camera.core.impl.ImmediateSurface@7e8286d}
-D/DeferrableSurface(12659): Surface terminated[total_surfaces=5, used_surfaces=2](androidx.camera.core.impl.ImmediateSurface@7e8286d}
-D/DeferrableSurface(12659): use count-1,  useCount=0 closed=true androidx.camera.core.impl.ImmediateSurface@911c8f0
-D/DeferrableSurface(12659): Surface no longer in use[total_surfaces=5, used_surfaces=1](androidx.camera.core.impl.ImmediateSurface@911c8f0}
-D/DeferrableSurface(12659): Surface terminated[total_surfaces=4, used_surfaces=1](androidx.camera.core.impl.ImmediateSurface@911c8f0}
-D/Camera2CameraImpl(12659): {Camera@8fdf67a[id=0]} CameraDevice.onClosed()
-D/Camera2CameraImpl(12659): {Camera@8fdf67a[id=0]} Attempting to open the camera.
-D/Camera2CameraImpl(12659): {Camera@8fdf67a[id=0]} No cameras available. Waiting for available camera before opening camera.
-D/Camera2CameraImpl(12659): {Camera@8fdf67a[id=0]} Transitioning camera internal state: REOPENING --> PENDING_OPEN
-D/CameraStateRegistry(12659): Recalculating open cameras:
-D/CameraStateRegistry(12659): Camera                                       State                 
-D/CameraStateRegistry(12659): -------------------------------------------------------------------
-D/CameraStateRegistry(12659): Camera@8fdf67a[id=0]                         PENDING_OPEN          
-D/CameraStateRegistry(12659): Camera@3aa207[id=1]                          UNKNOWN               
-D/CameraStateRegistry(12659): -------------------------------------------------------------------
-D/CameraStateRegistry(12659): Open count: 0 (Max allowed: 1)
-D/CameraStateMachine(12659): New public camera state CameraState{type=PENDING_OPEN, error=null} from PENDING_OPEN and null
-D/CameraStateMachine(12659): Publishing new public camera state CameraState{type=PENDING_OPEN, error=null}
-D/Camera2CameraImpl(12659): {Camera@8fdf67a[id=0]} Attempting to open the camera.
-D/CameraStateRegistry(12659): tryOpenCamera(Camera@8fdf67a[id=0]) [Available Cameras: 1, Already Open: false (Previous state: PENDING_OPEN)] --> SUCCESS
-D/CameraStateRegistry(12659): Recalculating open cameras:
-D/CameraStateRegistry(12659): Camera                                       State                 
-D/CameraStateRegistry(12659): -------------------------------------------------------------------
-D/CameraStateRegistry(12659): Camera@8fdf67a[id=0]                         OPENING               
-D/CameraStateRegistry(12659): Camera@3aa207[id=1]                          UNKNOWN               
-D/CameraStateRegistry(12659): -------------------------------------------------------------------
-D/CameraStateRegistry(12659): Open count: 1 (Max allowed: 1)
-D/Camera2CameraImpl(12659): {Camera@8fdf67a[id=0]} Opening camera.
-D/Camera2CameraImpl(12659): {Camera@8fdf67a[id=0]} Transitioning camera internal state: PENDING_OPEN --> OPENING
-D/CameraStateMachine(12659): New public camera state CameraState{type=OPENING, error=null} from OPENING and null
-D/CameraStateMachine(12659): Publishing new public camera state CameraState{type=OPENING, error=null}
-D/UseCaseAttachState(12659): All use case: [androidx.camera.core.ImageCapture-4cd0329a-9044-4036-a274-928a11d52c403362649, androidx.camera.core.Preview-e31ef3f9-df46-454e-ba9f-d26d62e4a909153407442, androidx.camera.core.ImageAnalysis-9c13efe6-423d-43da-9219-36ec3229b642268056784] for camera: 0
-D/Camera2PresenceSrc(12659): System onCameraAccessPrioritiesChanged.
-D/CameraInjector(12659): updateCloudCameraControllerInfoAsync: has aleardy start update task.
-D/CameraInjector(12659): waitForResult: 
-W/libc    (12659): Access denied finding property "persist.vendor.camera.privapp.list"
-D/CameraExtImplXiaoMi(12659): initCameraDevice: 0
-W/libc    (12659): Access denied finding property "vendor.camera.aux.packagelist"
-W/libc    (12659): Access denied finding property "vendor.camera.aux.packagelistext"
-D/Camera2PresenceSrc(12659): [FetchData] Refreshed camera list: CameraIdentifier{cameraIds=0}, CameraIdentifier{cameraIds=1}
-D/Camera2PresenceSrc(12659): System onCameraAccessPrioritiesChanged.
-D/CameraInjector(12659): updateCloudCameraControllerInfoAsync: has aleardy start update task.
-D/CameraInjector(12659): waitForResult: 
-W/libc    (12659): Access denied finding property "vendor.camera.aux.packagelist"
-W/libc    (12659): Access denied finding property "vendor.camera.aux.packagelistext"
-D/Camera2PresenceSrc(12659): [FetchData] Refreshed camera list: CameraIdentifier{cameraIds=0}, CameraIdentifier{cameraIds=1}
-D/Camera2PresenceSrc(12659): System onCameraAccessPrioritiesChanged.
-D/CameraInjector(12659): updateCloudCameraControllerInfoAsync: has aleardy start update task.
-D/CameraInjector(12659): waitForResult: 
-W/libc    (12659): Access denied finding property "vendor.camera.aux.packagelist"
-W/libc    (12659): Access denied finding property "vendor.camera.aux.packagelistext"
-D/Camera2PresenceSrc(12659): [FetchData] Refreshed camera list: CameraIdentifier{cameraIds=0}, CameraIdentifier{cameraIds=1}
-I/CameraManager(12659): Open camera top activityName is com.example.fmark_camera.MainActivity
-E/CameraManagerGlobal(12659): Camera 4 is not available. Ignore physical camera status change
-E/CameraManagerGlobal(12659): Camera 5 is not available. Ignore physical camera status change
-E/CameraManagerGlobal(12659): Camera 8 is not available. Ignore physical camera status change
-D/Camera2PresenceSrc(12659): System onCameraUnavailable: 0
-D/CameraInjector(12659): updateCloudCameraControllerInfoAsync: has aleardy start update task.
-D/CameraInjector(12659): waitForResult: 
-W/libc    (12659): Access denied finding property "vendor.camera.aux.packagelist"
-W/libc    (12659): Access denied finding property "vendor.camera.aux.packagelistext"
-W/CameraManagerGlobal(12659): ignore the torch status update of camera: 2
+### Sprint 2
+- 重构水印编辑器交互：引入旋转/缩放柄、数值微调、层级侧栏（ReorderableListView）、文本样式面板。
+- 调研并实现 Web 拍照路径（评估 `camera_web` 新版本或自定义 `MediaStream`）；制定 Web 导出方案（`ffmpeg_wasm` 或 Canvas 合成）。
+
+### Sprint 3
+- 完善 Gallery：视频缩略图缓存策略、导出对话框（原片/带水印/仅水印 PNG）、Profile 快速切换预览。
+- 评估自动化测试（Widget/Integration）可行性，至少补充 Profile CRUD、导出流程的最小测试。
+
+## 测试与验证
+- `flutter analyze`：当前仍提示水印编辑器未用字段/元素；需在后续重构时清理。
+- 手动回归：Android 实机已验证拍照、录像、导出（含带/不带水印）、摄像头切换；需在更多设备与分辨率下扩充验证。
+- 自动化测试：尚未编写。
+
+## 参考
+- 产品 PRD / 交互说明：`AGENTS.md`
+- 进度截图与差异：`docs/snapshot/`
+- 构建与手动测试：`docs/macos_build_and_test.md`
+- 最新摄像头日志：2025-09-26 Android 切换摄像头 log（参见需求中附带片段）。
