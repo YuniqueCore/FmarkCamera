@@ -16,11 +16,13 @@ class WatermarkRenderer {
     required WatermarkProfile profile,
     required WatermarkContext context,
     required Size canvasSize,
+    double scaleFactor = 1,
   }) async {
     final image = await renderToImage(
       profile: profile,
       context: context,
       canvasSize: canvasSize,
+      scaleFactor: scaleFactor,
     );
     final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
     if (byteData == null) {
@@ -33,6 +35,7 @@ class WatermarkRenderer {
     required WatermarkProfile profile,
     required WatermarkContext context,
     required Size canvasSize,
+    double scaleFactor = 1,
   }) async {
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder, Offset.zero & canvasSize);
@@ -40,7 +43,7 @@ class WatermarkRenderer {
     final ordered = [...profile.elements]
       ..sort((a, b) => a.zIndex.compareTo(b.zIndex));
     for (final element in ordered) {
-      await _drawElement(canvas, canvasSize, element, context);
+      await _drawElement(canvas, canvasSize, element, context, scaleFactor);
     }
 
     return recorder.endRecording().toImage(
@@ -54,6 +57,7 @@ class WatermarkRenderer {
     Size canvasSize,
     WatermarkElement element,
     WatermarkContext context,
+    double scaleFactor,
   ) async {
     final position = Offset(
       element.transform.position.dx * canvasSize.width,
@@ -62,7 +66,7 @@ class WatermarkRenderer {
     canvas.save();
     canvas.translate(position.dx, position.dy);
     canvas.rotate(element.transform.rotation);
-    canvas.scale(element.transform.scale);
+    canvas.scale(element.transform.scale * scaleFactor);
 
     switch (element.type) {
       case WatermarkElementType.text:

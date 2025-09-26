@@ -1,9 +1,11 @@
 import 'dart:convert';
 import 'dart:io' show File;
+import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:video_player/video_player.dart';
 
 import 'package:fmark_camera/src/domain/models/watermark_media_type.dart';
 import 'package:fmark_camera/src/domain/models/watermark_project.dart';
@@ -94,6 +96,22 @@ class _GalleryScreenState extends State<GalleryScreen> {
                           ),
                         ),
                         Positioned(
+                          top: 8,
+                          right: 8,
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              color: Colors.black.withValues(alpha: 0.55),
+                              shape: BoxShape.circle,
+                            ),
+                            child: IconButton(
+                              icon: const Icon(Icons.delete_outline),
+                              color: Colors.white,
+                              onPressed: () => _confirmDelete(project),
+                              tooltip: '删除',
+                            ),
+                          ),
+                        ),
+                        Positioned(
                           left: 8,
                           right: 8,
                           bottom: 8,
@@ -141,6 +159,58 @@ class _GalleryScreenState extends State<GalleryScreen> {
     );
   }
 
+  Future<void> _confirmDelete(WatermarkProject project) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('删除拍摄记录'),
+        content: const Text('删除后将移除媒资及关联水印配置，确定继续？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) {
+      return;
+    }
+    await _deleteProject(project);
+    if (!mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(context)
+        .showSnackBar(const SnackBar(content: Text('已删除拍摄记录')));
+  }
+
+  Future<void> _deleteProject(WatermarkProject project) async {
+    if (!kIsWeb) {
+      try {
+        if (project.mediaPath.isNotEmpty) {
+          final file = File(project.mediaPath);
+          if (await file.exists()) {
+            await file.delete();
+          }
+        }
+      } catch (_) {}
+      final overlayPath = project.overlayPath;
+      if (overlayPath != null && overlayPath.isNotEmpty) {
+        try {
+          final overlayFile = File(overlayPath);
+          if (await overlayFile.exists()) {
+            await overlayFile.delete();
+          }
+        } catch (_) {}
+      }
+    }
+    await _projectsController.removeProject(project.id);
+  }
+
   Widget _buildMediaPreview(WatermarkProject project) {
     if (project.mediaType == WatermarkMediaType.photo) {
       if (kIsWeb) {
@@ -171,8 +241,9 @@ class _GalleryScreenState extends State<GalleryScreen> {
     );
   }
 
-  void _openDetail(WatermarkProject project, WatermarkProfile profile) {
-    Navigator.of(context).push(
+  Future<void> _openDetail(
+      WatermarkProject project, WatermarkProfile profile) async {
+    final deleted = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
         builder: (_) => _CaptureDetailPage(
           project: project,
@@ -181,9 +252,16 @@ class _GalleryScreenState extends State<GalleryScreen> {
           onProjectUpdated: (updated) async {
             await _projectsController.updateProject(updated);
           },
+          onProjectDeleted: (deleted) async {
+            await _deleteProject(deleted);
+          },
         ),
       ),
     );
+    if (deleted == true && mounted) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('已删除拍摄记录')));
+    }
   }
 }
 
@@ -193,12 +271,14 @@ class _CaptureDetailPage extends StatefulWidget {
     required this.initialProfile,
     required this.bootstrapper,
     required this.onProjectUpdated,
+    this.onProjectDeleted,
   });
 
   final WatermarkProject project;
   final WatermarkProfile initialProfile;
   final Bootstrapper bootstrapper;
   final Future<void> Function(WatermarkProject project) onProjectUpdated;
+  final Future<void> Function(WatermarkProject project)? onProjectDeleted;
 
   @override
   State<_CaptureDetailPage> createState() => _CaptureDetailPageState();
@@ -235,6 +315,10 @@ class _CaptureDetailPageState extends State<_CaptureDetailPage> {
           _project.mediaType == WatermarkMediaType.photo ? '照片详情' : '视频详情',
         ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.delete_outline),
+            onPressed: _exporting ? null : _confirmDeleteCurrent,
+          ),
           IconButton(
             icon: const Icon(Icons.ios_share_outlined),
             onPressed: _exporting ? null : _exportMenu,
@@ -435,6 +519,36 @@ class _CaptureDetailPageState extends State<_CaptureDetailPage> {
     }
   }
 
+  Future<void> _confirmDeleteCurrent() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('删除拍摄记录'),
+        content: const Text('删除后将移除媒资及关联水印配置，确定继续？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) {
+      return;
+    }
+    if (widget.onProjectDeleted != null) {
+      await widget.onProjectDeleted!(_project);
+    }
+    if (!mounted) {
+      return;
+    }
+    Navigator.of(context).pop(true);
+  }
+
   Future<void> _exportOriginal() async {
     final mediaInput = _mediaInputForProject(_project);
     if (mediaInput == null) {
@@ -465,13 +579,27 @@ class _CaptureDetailPageState extends State<_CaptureDetailPage> {
 
   Future<void> _exportWatermarkOnly() async {
     setState(() => _exporting = true);
-    final canvasSize = _project.canvasSize ??
+    final baseCanvasSize = _project.canvasSize ??
         _profile.canvasSize ??
         const WatermarkCanvasSize(width: 1080, height: 1920);
+    final targetSize = await _resolveMediaDimensions();
+    var renderCanvasSize = baseCanvasSize;
+    var scaleFactor = 1.0;
+    if (targetSize != null && targetSize.width > 0 && targetSize.height > 0) {
+      renderCanvasSize = WatermarkCanvasSize(
+        width: targetSize.width,
+        height: targetSize.height,
+        pixelRatio: baseCanvasSize.pixelRatio,
+      );
+      if (baseCanvasSize.width > 0) {
+        scaleFactor = targetSize.width / baseCanvasSize.width;
+      }
+    }
     final bytes = await _renderer.renderToBytes(
       profile: _profile,
       context: _contextController.context,
-      canvasSize: canvasSize.toSize(),
+      canvasSize: renderCanvasSize.toSize(),
+      scaleFactor: scaleFactor,
     );
     final result = await _exporter.exportWatermarkPng(
       WatermarkMediaInput.fromBytes(bytes),
@@ -494,13 +622,27 @@ class _CaptureDetailPageState extends State<_CaptureDetailPage> {
 
   Future<void> _exportWithWatermark() async {
     setState(() => _exporting = true);
-    final canvasSize = _project.canvasSize ??
+    final baseCanvasSize = _project.canvasSize ??
         _profile.canvasSize ??
         const WatermarkCanvasSize(width: 1080, height: 1920);
+    final targetSize = await _resolveMediaDimensions();
+    var renderCanvasSize = baseCanvasSize;
+    var scaleFactor = 1.0;
+    if (targetSize != null && targetSize.width > 0 && targetSize.height > 0) {
+      renderCanvasSize = WatermarkCanvasSize(
+        width: targetSize.width,
+        height: targetSize.height,
+        pixelRatio: baseCanvasSize.pixelRatio,
+      );
+      if (baseCanvasSize.width > 0) {
+        scaleFactor = targetSize.width / baseCanvasSize.width;
+      }
+    }
     final overlayBytes = await _renderer.renderToBytes(
       profile: _profile,
       context: _contextController.context,
-      canvasSize: canvasSize.toSize(),
+      canvasSize: renderCanvasSize.toSize(),
+      scaleFactor: scaleFactor,
     );
     WatermarkMediaInput? overlayInput;
     if (kIsWeb) {
@@ -552,6 +694,71 @@ class _CaptureDetailPageState extends State<_CaptureDetailPage> {
         (result.success ? '导出成功：${result.outputPath ?? '已保存'}' : '导出失败，请稍后重试');
     ScaffoldMessenger.of(context)
         .showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<Size?> _resolveMediaDimensions() async {
+    if (_project.mediaType == WatermarkMediaType.photo) {
+      return _resolvePhotoDimensions();
+    }
+    return _resolveVideoDimensions();
+  }
+
+  Future<Size?> _resolvePhotoDimensions() async {
+    try {
+      if (!kIsWeb && _project.mediaPath.isNotEmpty) {
+        final file = File(_project.mediaPath);
+        if (await file.exists()) {
+          final bytes = await file.readAsBytes();
+          return _decodeImageSize(bytes);
+        }
+      }
+      final base64Data = _project.mediaDataBase64 ?? _project.thumbnailData;
+      if (base64Data != null && base64Data.isNotEmpty) {
+        final bytes = base64Decode(base64Data);
+        return _decodeImageSize(bytes);
+      }
+    } catch (error) {
+      debugPrint('Resolve photo dimension failed: $error');
+    }
+    return null;
+  }
+
+  Future<Size?> _resolveVideoDimensions() async {
+    if (kIsWeb || _project.mediaPath.isEmpty) {
+      return null;
+    }
+    final file = File(_project.mediaPath);
+    if (!file.existsSync()) {
+      return null;
+    }
+    VideoPlayerController? controller;
+    try {
+      controller = VideoPlayerController.file(file);
+      await controller.initialize();
+      final size = controller.value.size;
+      if (size.width <= 0 || size.height <= 0) {
+        return null;
+      }
+      return size;
+    } catch (error) {
+      debugPrint('Resolve video dimension failed: $error');
+      return null;
+    } finally {
+      await controller?.dispose();
+    }
+  }
+
+  Future<Size?> _decodeImageSize(Uint8List bytes) async {
+    try {
+      final codec = await ui.instantiateImageCodec(bytes);
+      final frame = await codec.getNextFrame();
+      final image = frame.image;
+      codec.dispose();
+      return Size(image.width.toDouble(), image.height.toDouble());
+    } catch (error) {
+      debugPrint('Decode image size failed: $error');
+      return null;
+    }
   }
 }
 

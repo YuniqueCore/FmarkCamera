@@ -37,6 +37,7 @@ class WatermarkCanvasView extends StatelessWidget {
                   element: element,
                   contextData: contextData,
                   canvasSize: canvasSize,
+                  renderSize: size,
                 ),
               )
               .toList(),
@@ -81,6 +82,7 @@ class EditableWatermarkCanvas extends StatelessWidget {
                   element: element,
                   contextData: contextData,
                   canvasSize: canvasSize,
+                  renderSize: size,
                   selected: element.id == selectedElementId,
                   onSelected: () => onElementSelected(element.id),
                   onDelete: onElementDeleted == null

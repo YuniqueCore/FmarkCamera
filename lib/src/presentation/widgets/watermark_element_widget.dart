@@ -17,18 +17,31 @@ class WatermarkElementView extends StatelessWidget {
     required this.element,
     required this.contextData,
     required this.canvasSize,
+    required this.renderSize,
   });
 
   final WatermarkElement element;
   final WatermarkContext contextData;
   final WatermarkCanvasSize canvasSize;
+  final Size renderSize;
+
+  double get _displayScale {
+    final baseWidth = canvasSize.width;
+    final baseHeight = canvasSize.height;
+    if (baseWidth <= 0 || baseHeight <= 0) {
+      return 1;
+    }
+    final scaleX = renderSize.width / baseWidth;
+    final scaleY = renderSize.height / baseHeight;
+    return (scaleX + scaleY) * 0.5;
+  }
 
   @override
   Widget build(BuildContext context) {
     final position = element.transform.position;
-    final size = canvasSize.toSize();
-    final left = position.dx * size.width;
-    final top = position.dy * size.height;
+    final left = position.dx.clamp(0.0, 1.0) * renderSize.width;
+    final top = position.dy.clamp(0.0, 1.0) * renderSize.height;
+    final effectiveScale = element.transform.scale * _displayScale;
     return Positioned(
       left: left,
       top: top,
@@ -38,7 +51,7 @@ class WatermarkElementView extends StatelessWidget {
           angle: element.transform.rotation,
           alignment: Alignment.center,
           child: Transform.scale(
-            scale: element.transform.scale,
+            scale: effectiveScale,
             alignment: Alignment.center,
             child: Opacity(
               opacity: element.opacity,
@@ -61,6 +74,7 @@ class EditableWatermarkElement extends StatefulWidget {
     required this.element,
     required this.contextData,
     required this.canvasSize,
+    required this.renderSize,
     required this.onTransform,
     required this.selected,
     this.onDelete,
@@ -71,6 +85,7 @@ class EditableWatermarkElement extends StatefulWidget {
   final WatermarkElement element;
   final WatermarkContext contextData;
   final WatermarkCanvasSize canvasSize;
+  final Size renderSize;
   final ValueChanged<WatermarkTransform> onTransform;
   final bool selected;
   final VoidCallback? onDelete;
@@ -123,15 +138,15 @@ class _EditableWatermarkElementState extends State<EditableWatermarkElement> {
     if (widget.isLocked) {
       return;
     }
-    final canvasSize = widget.canvasSize.toSize();
+    final renderSize = widget.renderSize;
     if (_lastFocalPoint != null &&
-        canvasSize.width > 0 &&
-        canvasSize.height > 0) {
+        renderSize.width > 0 &&
+        renderSize.height > 0) {
       final delta = details.focalPoint - _lastFocalPoint!;
       _lastFocalPoint = details.focalPoint;
       final normalized = Offset(
-        delta.dx / canvasSize.width,
-        delta.dy / canvasSize.height,
+        delta.dx / renderSize.width,
+        delta.dy / renderSize.height,
       );
       _currentPosition = Offset(
         (_currentPosition.dx + normalized.dx).clamp(0.0, 1.0),
@@ -156,9 +171,15 @@ class _EditableWatermarkElementState extends State<EditableWatermarkElement> {
   @override
   Widget build(BuildContext context) {
     final position = widget.element.transform.position;
-    final size = widget.canvasSize.toSize();
-    final left = position.dx * size.width;
-    final top = position.dy * size.height;
+    final renderSize = widget.renderSize;
+    final baseWidth = widget.canvasSize.width;
+    final baseHeight = widget.canvasSize.height;
+    final scaleX = baseWidth <= 0 ? 1.0 : renderSize.width / baseWidth;
+    final scaleY = baseHeight <= 0 ? 1.0 : renderSize.height / baseHeight;
+    final displayScale = (scaleX + scaleY) * 0.5;
+    final left = position.dx.clamp(0.0, 1.0) * renderSize.width;
+    final top = position.dy.clamp(0.0, 1.0) * renderSize.height;
+    final effectiveScale = widget.element.transform.scale * displayScale;
     return Positioned(
       left: left,
       top: top,
@@ -178,7 +199,7 @@ class _EditableWatermarkElementState extends State<EditableWatermarkElement> {
                 angle: widget.element.transform.rotation,
                 alignment: Alignment.center,
                 child: Transform.scale(
-                  scale: widget.element.transform.scale,
+                  scale: effectiveScale,
                   alignment: Alignment.center,
                   child: Opacity(
                     opacity: widget.element.opacity,
@@ -195,6 +216,19 @@ class _EditableWatermarkElementState extends State<EditableWatermarkElement> {
                 child: DecoratedBox(
                   decoration: BoxDecoration(
                     border: Border.all(color: Colors.orangeAccent, width: 1.5),
+                  ),
+                ),
+              ),
+            if (widget.selected)
+              const Positioned.fill(
+                child: IgnorePointer(
+                  child: Stack(
+                    children: [
+                      _SelectionHandle(alignment: Alignment.topLeft),
+                      _SelectionHandle(alignment: Alignment.topRight),
+                      _SelectionHandle(alignment: Alignment.bottomLeft),
+                      _SelectionHandle(alignment: Alignment.bottomRight),
+                    ],
                   ),
                 ),
               ),
@@ -262,10 +296,13 @@ class _WatermarkElementContent extends StatelessWidget {
                 ],
               )
             : baseStyle;
-    return Text(
-      text,
-      textAlign: align,
-      style: effectiveStyle,
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      child: Text(
+        text,
+        textAlign: align,
+        style: effectiveStyle,
+      ),
     );
   }
 
@@ -354,5 +391,29 @@ class _WatermarkElementContent extends StatelessWidget {
       return temperature;
     }
     return '$temperature ${weather.description}';
+  }
+}
+
+class _SelectionHandle extends StatelessWidget {
+  const _SelectionHandle({required this.alignment});
+
+  final Alignment alignment;
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: alignment,
+      child: Container(
+        width: 10,
+        height: 10,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(2),
+          boxShadow: const [
+            BoxShadow(color: Colors.black45, blurRadius: 2),
+          ],
+        ),
+      ),
+    );
   }
 }
