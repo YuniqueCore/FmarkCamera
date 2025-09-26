@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:uuid/uuid.dart';
+import 'package:video_thumbnail/video_thumbnail.dart' as video_thumbnail;
 
 import 'package:fmark_camera/src/domain/models/watermark_context.dart';
 import 'package:fmark_camera/src/domain/models/watermark_media_type.dart';
@@ -318,45 +319,44 @@ class _CameraScreenState extends State<CameraScreen>
       controller.value.previewSize,
       orientation,
     );
-    final aspectRatio = previewSize.width / previewSize.height;
-    final maxWidth = constraints.maxWidth.isFinite
-        ? constraints.maxWidth
-        : previewSize.width;
-    final maxHeight = constraints.maxHeight.isFinite
-        ? constraints.maxHeight
-        : previewSize.height;
-    double width = maxWidth;
-    double height = width / aspectRatio;
-    if (height > maxHeight) {
-      height = maxHeight;
-      width = height * aspectRatio;
-    }
     final pixelRatio = mediaQuery.devicePixelRatio;
     final canvasSize = _resolveCanvasSize(
       activeProfile,
       previewSize,
       pixelRatio,
     );
-    return Center(
+    final biggest = constraints.biggest;
+    final wrapperWidth =
+        biggest.width.isFinite ? biggest.width : previewSize.width;
+    final wrapperHeight =
+        biggest.height.isFinite ? biggest.height : previewSize.height;
+    final preview = FittedBox(
+      fit: BoxFit.contain,
       child: SizedBox(
-        width: width,
-        height: height,
-        child: ClipRect(
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              CameraPreview(controller),
-              if (activeProfile != null)
-                Positioned.fill(
-                  child: WatermarkCanvasView(
-                    elements: activeProfile.elements,
-                    contextData: contextData,
-                    canvasSize: canvasSize,
+        width: previewSize.width,
+        height: previewSize.height,
+        child: CameraPreview(
+          controller,
+          child: activeProfile == null
+              ? const SizedBox.shrink()
+              : IgnorePointer(
+                  ignoring: true,
+                  child: SizedBox.expand(
+                    child: WatermarkCanvasView(
+                      elements: activeProfile.elements,
+                      contextData: contextData,
+                      canvasSize: canvasSize,
+                    ),
                   ),
                 ),
-            ],
-          ),
         ),
+      ),
+    );
+    return Center(
+      child: SizedBox(
+        width: wrapperWidth,
+        height: wrapperHeight,
+        child: preview,
       ),
     );
   }
@@ -616,32 +616,105 @@ class _CameraScreenState extends State<CameraScreen>
       return;
     }
     if (_isRecording) {
-      final file = await controller.stopVideoRecording();
-      setState(() => _isRecording = false);
-      await _storeCapture(
-        path: file.path,
-        mediaType: WatermarkMediaType.video,
-        previewSize: controller.value.previewSize,
-        aspectRatio: controller.value.aspectRatio,
-        profile: profile,
-      );
-      if (!mounted) {
-        return;
+      try {
+        final file = await controller.stopVideoRecording();
+        setState(() => _isRecording = false);
+        String? thumbnailData;
+        if (!kIsWeb) {
+          thumbnailData = await _generateVideoThumbnail(file.path);
+        }
+        await _storeCapture(
+          path: file.path,
+          mediaType: WatermarkMediaType.video,
+          previewSize: controller.value.previewSize,
+          aspectRatio: controller.value.aspectRatio,
+          profile: profile,
+          thumbnailData: thumbnailData,
+        );
+        if (!mounted) {
+          return;
+        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('视频已保存，可在图库中导出水印版本')),
+        );
+      } on CameraException catch (error) {
+        setState(() => _isRecording = false);
+        if (!mounted) {
+          return;
+        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('停止录像失败: ${error.description ?? error.code}'),
+          ),
+        );
+      } catch (error) {
+        setState(() => _isRecording = false);
+        if (!mounted) {
+          return;
+        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('停止录像失败: $error')),
+        );
       }
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('视频已保存，可在图库中导出水印版本')),
-      );
     } else {
       if (!controller.value.isInitialized) {
         return;
       }
+      if (!kIsWeb) {
+        final micStatus = await Permission.microphone.request();
+        if (!micStatus.isGranted) {
+          if (!mounted) {
+            return;
+          }
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('需要麦克风权限才能录制视频')),
+          );
+          return;
+        }
+      }
       try {
         await controller.prepareForVideoRecording();
-      } catch (_) {
-        // 某些平台无需显式 prepare
+      } catch (error) {
+        debugPrint('prepareForVideoRecording skipped: $error');
       }
-      await controller.startVideoRecording();
-      setState(() => _isRecording = true);
+      try {
+        await controller.startVideoRecording();
+        setState(() => _isRecording = true);
+      } on CameraException catch (error) {
+        if (!mounted) {
+          return;
+        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('开始录像失败: ${error.description ?? error.code}'),
+          ),
+        );
+      } catch (error) {
+        if (!mounted) {
+          return;
+        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('开始录像失败: $error')),
+        );
+      }
+    }
+  }
+
+  Future<String?> _generateVideoThumbnail(String videoPath) async {
+    try {
+      final bytes = await video_thumbnail.VideoThumbnail.thumbnailData(
+        video: videoPath,
+        imageFormat: video_thumbnail.ImageFormat.PNG,
+        maxWidth: 480,
+        quality: 75,
+      );
+      if (bytes == null || bytes.isEmpty) {
+        return null;
+      }
+      return base64Encode(bytes);
+    } catch (error) {
+      debugPrint('Video thumbnail generation failed: $error');
+      return null;
     }
   }
 
@@ -695,4 +768,3 @@ class _CameraScreenState extends State<CameraScreen>
     await _projectsController.addProject(project);
   }
 }
-

@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:web/web.dart' as web;
@@ -42,7 +41,6 @@ class WebWatermarkExporter implements WatermarkExporter {
       // 在Web上使用简单的方法合成图片
       // 创建一个数据URL来下载
       final photoDataUrl = 'data:image/png;base64,${base64Encode(photoBytes)}';
-      final overlayDataUrl = 'data:image/png;base64,${base64Encode(overlayBytes)}';
 
       // 由于Canvas API在Dart Web中的限制，我们使用简单的方法：
       // 直接下载原始照片，因为Web端的复杂合成需要更多浏览器API支持
@@ -82,7 +80,6 @@ class WebWatermarkExporter implements WatermarkExporter {
       userMessage: 'Web端暂不支持视频合成，请在移动端导出',
     );
   }
-
 
   @override
   Future<String?> saveOverlayBytes(List<int> bytes) async {
