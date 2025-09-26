@@ -19,6 +19,31 @@ import 'package:fmark_camera/src/services/watermark_renderer.dart';
 import 'package:fmark_camera/src/presentation/profiles/profile_editor_screen.dart';
 import 'package:fmark_camera/src/presentation/widgets/watermark_canvas.dart';
 
+Widget? _videoThumbnailForProject(
+  WatermarkProject project, {
+  BoxFit fit = BoxFit.cover,
+}) {
+  final base64Thumb = project.thumbnailData;
+  if (base64Thumb != null && base64Thumb.isNotEmpty) {
+    try {
+      final bytes = base64Decode(base64Thumb);
+      if (bytes.isNotEmpty) {
+        return Image.memory(bytes, fit: fit);
+      }
+    } catch (_) {}
+  }
+  if (!kIsWeb) {
+    final thumbPath = project.thumbnailPath;
+    if (thumbPath != null && thumbPath.isNotEmpty) {
+      final file = File(thumbPath);
+      if (file.existsSync()) {
+        return Image.file(file, fit: fit);
+      }
+    }
+  }
+  return null;
+}
+
 class GalleryScreen extends StatefulWidget {
   const GalleryScreen({super.key, required this.bootstrapper});
 
@@ -227,6 +252,11 @@ class _GalleryScreenState extends State<GalleryScreen> {
           return Image.file(file, fit: BoxFit.cover);
         }
       }
+    } else if (project.mediaType == WatermarkMediaType.video) {
+      final videoThumb = _videoThumbnailForProject(project);
+      if (videoThumb != null) {
+        return videoThumb;
+      }
     }
     return Container(
       color: Colors.black,
@@ -411,6 +441,14 @@ class _CaptureDetailPageState extends State<_CaptureDetailPage> {
         if (file.existsSync()) {
           return Image.file(file, fit: BoxFit.contain);
         }
+      }
+    } else if (project.mediaType == WatermarkMediaType.video) {
+      final videoThumb = _videoThumbnailForProject(
+        project,
+        fit: BoxFit.contain,
+      );
+      if (videoThumb != null) {
+        return videoThumb;
       }
     }
     return Container(

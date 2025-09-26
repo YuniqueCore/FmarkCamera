@@ -127,46 +127,53 @@ class _ProfileEditorScreenState extends State<ProfileEditorScreen> {
           Expanded(
             child: Container(
               color: const Color(0xFF0F1114),
-              child: Stack(
-                fit: StackFit.expand,
+              child: Row(
                 children: [
-                  if (_showGrid)
-                    CustomPaint(
-                      painter: _GridPainter(canvasSize: _canvasSize),
-                    ),
-                  Center(
-                    child: AspectRatio(
-                      aspectRatio: _canvasSize.width / _canvasSize.height,
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF1B1F24),
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: Colors.white10),
-                          boxShadow: const [
-                            BoxShadow(
-                              color: Colors.black38,
-                              blurRadius: 12,
-                              offset: Offset(0, 6),
+                  Expanded(
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        if (_showGrid)
+                          CustomPaint(
+                            painter: _GridPainter(canvasSize: _canvasSize),
+                          ),
+                        Center(
+                          child: AspectRatio(
+                            aspectRatio: _canvasSize.width / _canvasSize.height,
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF1B1F24),
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(color: Colors.white10),
+                                boxShadow: const [
+                                  BoxShadow(
+                                    color: Colors.black38,
+                                    blurRadius: 12,
+                                    offset: Offset(0, 6),
+                                  ),
+                                ],
+                              ),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(16),
+                                child: EditableWatermarkCanvas(
+                                  elements: _profile.elements,
+                                  contextData: _context,
+                                  canvasSize: _canvasSize,
+                                  selectedElementId: _selectedElementId,
+                                  onElementSelected: (id) => setState(() {
+                                    _selectedElementId = id;
+                                  }),
+                                  onElementChanged: _applyElement,
+                                  onElementDeleted: _removeElement,
+                                ),
+                              ),
                             ),
-                          ],
-                        ),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(16),
-                          child: EditableWatermarkCanvas(
-                            elements: _profile.elements,
-                            contextData: _context,
-                            canvasSize: _canvasSize,
-                            selectedElementId: _selectedElementId,
-                            onElementSelected: (id) => setState(() {
-                              _selectedElementId = id;
-                            }),
-                            onElementChanged: _applyElement,
-                            onElementDeleted: _removeElement,
                           ),
                         ),
-                      ),
+                      ],
                     ),
                   ),
+                  _buildLayerSidebar(context),
                 ],
               ),
             ),
@@ -499,70 +506,75 @@ class _ProfileEditorScreenState extends State<ProfileEditorScreen> {
     String preview = _formatTimePreview(controller.text);
     final result = await showModalBottomSheet<String>(
       context: context,
+      isScrollControlled: true,
       builder: (context) {
-        return SafeArea(
-          child: StatefulBuilder(
-            builder: (context, setModalState) {
-              return Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('时间格式',
-                        style: Theme.of(context).textTheme.titleMedium),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: controller,
-                      decoration: const InputDecoration(
-                        labelText: '格式化 pattern',
-                        border: OutlineInputBorder(),
-                      ),
-                      onChanged: (value) => setModalState(
-                        () => preview = _formatTimePreview(value),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    DropdownButtonFormField<String>(
-                      initialValue: presets.contains(controller.text)
-                          ? controller.text
-                          : null,
-                      decoration: const InputDecoration(
-                        labelText: '快速选择',
-                        border: OutlineInputBorder(),
-                      ),
-                      items: presets
-                          .map((value) => DropdownMenuItem(
-                                value: value,
-                                child: Text(value),
-                              ))
-                          .toList(),
-                      onChanged: (value) {
-                        if (value == null) {
-                          return;
-                        }
-                        controller.text = value;
-                        setModalState(
+        final viewInsets = MediaQuery.of(context).viewInsets;
+        return Padding(
+          padding: EdgeInsets.only(bottom: viewInsets.bottom),
+          child: SafeArea(
+            child: StatefulBuilder(
+              builder: (context, setModalState) {
+                return Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('时间格式',
+                          style: Theme.of(context).textTheme.titleMedium),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: controller,
+                        decoration: const InputDecoration(
+                          labelText: '格式化 pattern',
+                          border: OutlineInputBorder(),
+                        ),
+                        onChanged: (value) => setModalState(
                           () => preview = _formatTimePreview(value),
-                        );
-                      },
-                    ),
-                    const SizedBox(height: 12),
-                    Text('预览：$preview',
-                        style: const TextStyle(color: Colors.white70)),
-                    const SizedBox(height: 12),
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: FilledButton(
-                        onPressed: () =>
-                            Navigator.pop(context, controller.text.trim()),
-                        child: const Text('确定'),
+                        ),
                       ),
-                    ),
-                  ],
-                ),
-              );
-            },
+                      const SizedBox(height: 12),
+                      DropdownButtonFormField<String>(
+                        initialValue: presets.contains(controller.text)
+                            ? controller.text
+                            : null,
+                        decoration: const InputDecoration(
+                          labelText: '快速选择',
+                          border: OutlineInputBorder(),
+                        ),
+                        items: presets
+                            .map((value) => DropdownMenuItem(
+                                  value: value,
+                                  child: Text(value),
+                                ))
+                            .toList(),
+                        onChanged: (value) {
+                          if (value == null) {
+                            return;
+                          }
+                          controller.text = value;
+                          setModalState(
+                            () => preview = _formatTimePreview(value),
+                          );
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      Text('预览：$preview',
+                          style: const TextStyle(color: Colors.white70)),
+                      const SizedBox(height: 12),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: FilledButton(
+                          onPressed: () =>
+                              Navigator.pop(context, controller.text.trim()),
+                          child: const Text('确定'),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
           ),
         );
       },
@@ -872,62 +884,70 @@ class _ProfileEditorScreenState extends State<ProfileEditorScreen> {
         text: (rotation * 180 / math.pi).toStringAsFixed(1));
     final confirmed = await showModalBottomSheet<bool>(
       context: context,
+      isScrollControlled: true,
       builder: (context) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text('精细调整', style: Theme.of(context).textTheme.titleMedium),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: positionX,
-                        decoration: const InputDecoration(labelText: 'X (0-1)'),
-                        keyboardType: TextInputType.number,
+        final viewInsets = MediaQuery.of(context).viewInsets;
+        return Padding(
+          padding: EdgeInsets.only(bottom: viewInsets.bottom),
+          child: SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('精细调整', style: Theme.of(context).textTheme.titleMedium),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: positionX,
+                          decoration:
+                              const InputDecoration(labelText: 'X (0-1)'),
+                          keyboardType: TextInputType.number,
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: TextField(
-                        controller: positionY,
-                        decoration: const InputDecoration(labelText: 'Y (0-1)'),
-                        keyboardType: TextInputType.number,
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: TextField(
+                          controller: positionY,
+                          decoration:
+                              const InputDecoration(labelText: 'Y (0-1)'),
+                          keyboardType: TextInputType.number,
+                        ),
                       ),
-                    ),
-                  ],
-                ),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: scaleController,
-                        decoration: const InputDecoration(labelText: '缩放'),
-                        keyboardType: TextInputType.number,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: TextField(
-                        controller: rotationController,
-                        decoration: const InputDecoration(labelText: '旋转 (°)'),
-                        keyboardType: TextInputType.number,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: FilledButton(
-                    onPressed: () => Navigator.pop(context, true),
-                    child: const Text('应用'),
+                    ],
                   ),
-                ),
-              ],
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: scaleController,
+                          decoration: const InputDecoration(labelText: '缩放'),
+                          keyboardType: TextInputType.number,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: TextField(
+                          controller: rotationController,
+                          decoration:
+                              const InputDecoration(labelText: '旋转 (°)'),
+                          keyboardType: TextInputType.number,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: FilledButton(
+                      onPressed: () => Navigator.pop(context, true),
+                      child: const Text('应用'),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         );
@@ -1002,6 +1022,168 @@ class _ProfileEditorScreenState extends State<ProfileEditorScreen> {
           ),
         );
       },
+    );
+  }
+
+  Widget _buildLayerSidebar(BuildContext context) {
+    final availableWidth = MediaQuery.of(context).size.width;
+    if (availableWidth < 720) {
+      return const SizedBox(width: 0);
+    }
+    final elements = [..._profile.elements]
+      ..sort((a, b) => b.zIndex.compareTo(a.zIndex));
+    return Container(
+      width: 240,
+      margin: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: const Color(0xFF141820),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            child: Row(
+              children: [
+                const Icon(Icons.layers, color: Colors.white70, size: 18),
+                const SizedBox(width: 8),
+                Text(
+                  '元素层级',
+                  style: Theme.of(context)
+                      .textTheme
+                      .titleMedium
+                      ?.copyWith(color: Colors.white),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: elements.isEmpty
+                ? const Center(
+                    child: Text(
+                      '暂无元素',
+                      style: TextStyle(color: Colors.white54),
+                    ),
+                  )
+                : ReorderableListView.builder(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    itemCount: elements.length,
+                    buildDefaultDragHandles: false,
+                    onReorder: _onLayerReorder,
+                    itemBuilder: (context, index) {
+                      final element = elements[index];
+                      final selected = element.id == _selectedElementId;
+                      final title = _titleForElement(element);
+                      final icon = _iconForElementType(element.type);
+                      return Container(
+                        key: ValueKey(element.id),
+                        margin: const EdgeInsets.symmetric(vertical: 4),
+                        decoration: BoxDecoration(
+                          color: selected
+                              ? Colors.orangeAccent.withValues(alpha: 0.15)
+                              : Colors.white.withValues(alpha: 0.06),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color:
+                                selected ? Colors.orangeAccent : Colors.white12,
+                            width: selected ? 1.5 : 1,
+                          ),
+                        ),
+                        child: ListTile(
+                          dense: true,
+                          leading: Icon(icon, color: Colors.white70, size: 18),
+                          title: Text(
+                            title,
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 14,
+                              fontWeight:
+                                  selected ? FontWeight.w600 : FontWeight.w500,
+                            ),
+                          ),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                iconSize: 18,
+                                icon: Icon(
+                                  element.isLocked
+                                      ? Icons.lock
+                                      : Icons.lock_open,
+                                ),
+                                tooltip: element.isLocked ? '解锁元素' : '锁定元素',
+                                color: element.isLocked
+                                    ? Colors.amberAccent
+                                    : Colors.white54,
+                                onPressed: () => _toggleElementLock(element),
+                              ),
+                              ReorderableDragStartListener(
+                                index: index,
+                                child: const Icon(
+                                  Icons.drag_indicator,
+                                  color: Colors.white38,
+                                ),
+                              ),
+                            ],
+                          ),
+                          onTap: () {
+                            setState(() {
+                              _selectedElementId = element.id;
+                            });
+                          },
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _onLayerReorder(int oldIndex, int newIndex) {
+    final ordered = [..._profile.elements]
+      ..sort((a, b) => b.zIndex.compareTo(a.zIndex));
+    if (newIndex > oldIndex) {
+      newIndex -= 1;
+    }
+    final moved = ordered.removeAt(oldIndex);
+    ordered.insert(newIndex, moved);
+    final ascending = ordered.reversed.toList();
+    final updated = <WatermarkElement>[];
+    for (var i = 0; i < ascending.length; i++) {
+      updated.add(ascending[i].copyWith(zIndex: i));
+    }
+    setState(() {
+      _profile = _profile.copyWith(
+        elements: updated,
+        updatedAt: DateTime.now(),
+      );
+    });
+  }
+
+  IconData _iconForElementType(WatermarkElementType type) {
+    switch (type) {
+      case WatermarkElementType.text:
+        return Icons.text_fields;
+      case WatermarkElementType.time:
+        return Icons.access_time;
+      case WatermarkElementType.location:
+        return Icons.place_outlined;
+      case WatermarkElementType.weather:
+        return Icons.wb_sunny_outlined;
+      case WatermarkElementType.image:
+        return Icons.image_outlined;
+    }
+  }
+
+  void _toggleElementLock(WatermarkElement element) {
+    _applyElement(
+      element.copyWith(isLocked: !element.isLocked),
     );
   }
 

@@ -1,7 +1,8 @@
 import 'dart:async';
-import 'dart:io' show File;
-import 'dart:ui' as ui;
 import 'dart:convert';
+import 'dart:io' show File;
+import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -70,20 +71,43 @@ class WatermarkRenderer {
 
     switch (element.type) {
       case WatermarkElementType.text:
-        _drawText(canvas, element, element.payload.text ?? '',
-            alignCenter: true);
+        _drawText(
+          canvas,
+          canvasSize,
+          element,
+          element.payload.text ?? '',
+          alignCenter: true,
+        );
         break;
       case WatermarkElementType.time:
         final formatted = _formatTime(context, element);
-        _drawText(canvas, element, formatted, alignCenter: false);
+        _drawText(
+          canvas,
+          canvasSize,
+          element,
+          formatted,
+          alignCenter: false,
+        );
         break;
       case WatermarkElementType.location:
         final locationText = _formatLocation(context, element);
-        _drawText(canvas, element, locationText, alignCenter: false);
+        _drawText(
+          canvas,
+          canvasSize,
+          element,
+          locationText,
+          alignCenter: false,
+        );
         break;
       case WatermarkElementType.weather:
         final weatherText = _formatWeather(context, element);
-        _drawText(canvas, element, weatherText, alignCenter: false);
+        _drawText(
+          canvas,
+          canvasSize,
+          element,
+          weatherText,
+          alignCenter: false,
+        );
         break;
       case WatermarkElementType.image:
         await _drawImage(canvas, element);
@@ -93,31 +117,81 @@ class WatermarkRenderer {
     canvas.restore();
   }
 
-  void _drawText(Canvas canvas, WatermarkElement element, String text,
-      {required bool alignCenter}) {
+  void _drawText(
+    Canvas canvas,
+    Size canvasSize,
+    WatermarkElement element,
+    String text, {
+    required bool alignCenter,
+  }) {
     if (text.isEmpty) {
       return;
     }
-    final style = element.textStyle?.asTextStyle() ??
-        const TextStyle(
-          fontSize: 14,
-          color: Colors.white,
-          fontWeight: FontWeight.w500,
-        );
+    final textStyle = _resolveTextStyle(element);
+    final baseColor = textStyle.color ?? Colors.white;
+    final baseAlpha = baseColor.a;
+    final colorWithOpacity = baseColor.withValues(
+      alpha: (baseAlpha * element.opacity).clamp(0.0, 1.0),
+    );
     final painter = TextPainter(
       text: TextSpan(
         text: text,
-        style: style.copyWith(
-          color: (style.color ?? Colors.white)
-              .withValues(alpha: element.opacity.clamp(0.0, 1.0)),
-        ),
+        style: textStyle.copyWith(color: colorWithOpacity),
       ),
       textAlign: alignCenter ? TextAlign.center : TextAlign.left,
       textDirection: ui.TextDirection.ltr,
       maxLines: 3,
-    )..layout(maxWidth: 400);
-    canvas.translate(-painter.width / 2, -painter.height / 2);
-    painter.paint(canvas, Offset.zero);
+    )..layout(maxWidth: canvasSize.width);
+
+    const padding = EdgeInsets.symmetric(horizontal: 12, vertical: 6);
+    final totalWidth = painter.width + padding.horizontal;
+    final totalHeight = painter.height + padding.vertical;
+    final paintOrigin = Offset(
+      -totalWidth / 2 + padding.left,
+      -totalHeight / 2 + padding.top,
+    );
+
+    final backgroundColor = element.textStyle?.background;
+    if (backgroundColor != null) {
+      final backgroundAlpha = backgroundColor.a;
+      final adjustedBackground = backgroundColor.withValues(
+        alpha: (backgroundAlpha * element.opacity).clamp(0.0, 1.0),
+      );
+      final rect = Rect.fromLTWH(
+        -totalWidth / 2,
+        -totalHeight / 2,
+        totalWidth,
+        totalHeight,
+      );
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(rect, const Radius.circular(8)),
+        Paint()..color = adjustedBackground,
+      );
+    }
+
+    painter.paint(canvas, paintOrigin);
+  }
+
+  TextStyle _resolveTextStyle(WatermarkElement element) {
+    final base = element.textStyle?.asTextStyle() ??
+        const TextStyle(
+          fontSize: 16,
+          color: Colors.white,
+          fontWeight: FontWeight.w600,
+        );
+    final hasShadow = base.shadows != null && base.shadows!.isNotEmpty;
+    if (hasShadow) {
+      return base;
+    }
+    return base.copyWith(
+      shadows: const [
+        Shadow(
+          color: Colors.black54,
+          blurRadius: 6,
+          offset: Offset(0, 2),
+        ),
+      ],
+    );
   }
 
   Future<void> _drawImage(Canvas canvas, WatermarkElement element) async {
@@ -140,11 +214,20 @@ class WatermarkRenderer {
     }
     final image = await decodeImageFromList(bytes);
     final paint = Paint()
-      ..color = Colors.white.withValues(alpha: element.opacity.clamp(0.0, 1.0));
+      ..color = Colors.white.withValues(
+        alpha: element.opacity.clamp(0.0, 1.0),
+      );
+    const baseSize = 96.0;
+    final widthScale = baseSize / image.width;
+    final heightScale = baseSize / image.height;
+    final scale = math.min(widthScale, heightScale);
+    final targetWidth = image.width * scale;
+    final targetHeight = image.height * scale;
     final rect = Rect.fromCenter(
-        center: Offset.zero,
-        width: image.width.toDouble(),
-        height: image.height.toDouble());
+      center: Offset.zero,
+      width: targetWidth,
+      height: targetHeight,
+    );
     canvas.translate(-rect.width / 2, -rect.height / 2);
     canvas.drawImageRect(
       image,

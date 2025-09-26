@@ -39,26 +39,24 @@ class WatermarkElementView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final position = element.transform.position;
-    final left = position.dx.clamp(0.0, 1.0) * renderSize.width;
-    final top = position.dy.clamp(0.0, 1.0) * renderSize.height;
     final effectiveScale = element.transform.scale * _displayScale;
-    return Positioned(
-      left: left,
-      top: top,
-      child: FractionalTranslation(
-        translation: const Offset(-0.5, -0.5),
-        child: Transform.rotate(
-          angle: element.transform.rotation,
+    final alignment = Alignment(
+      (position.dx.clamp(0.0, 1.0) * 2) - 1,
+      (position.dy.clamp(0.0, 1.0) * 2) - 1,
+    );
+    return Align(
+      alignment: alignment,
+      child: Transform.rotate(
+        angle: element.transform.rotation,
+        alignment: Alignment.center,
+        child: Transform.scale(
+          scale: effectiveScale,
           alignment: Alignment.center,
-          child: Transform.scale(
-            scale: effectiveScale,
-            alignment: Alignment.center,
-            child: Opacity(
-              opacity: element.opacity,
-              child: _WatermarkElementContent(
-                element: element,
-                contextData: contextData,
-              ),
+          child: Opacity(
+            opacity: element.opacity,
+            child: _WatermarkElementContent(
+              element: element,
+              contextData: contextData,
             ),
           ),
         ),
@@ -177,12 +175,14 @@ class _EditableWatermarkElementState extends State<EditableWatermarkElement> {
     final scaleX = baseWidth <= 0 ? 1.0 : renderSize.width / baseWidth;
     final scaleY = baseHeight <= 0 ? 1.0 : renderSize.height / baseHeight;
     final displayScale = (scaleX + scaleY) * 0.5;
-    final left = position.dx.clamp(0.0, 1.0) * renderSize.width;
-    final top = position.dy.clamp(0.0, 1.0) * renderSize.height;
     final effectiveScale = widget.element.transform.scale * displayScale;
-    return Positioned(
-      left: left,
-      top: top,
+    final alignment = Alignment(
+      (position.dx.clamp(0.0, 1.0) * 2) - 1,
+      (position.dy.clamp(0.0, 1.0) * 2) - 1,
+    );
+
+    return Align(
+      alignment: alignment,
       child: GestureDetector(
         behavior: HitTestBehavior.translucent,
         onTap: widget.onSelected,
@@ -190,63 +190,61 @@ class _EditableWatermarkElementState extends State<EditableWatermarkElement> {
         onScaleStart: widget.isLocked ? null : _onScaleStart,
         onScaleUpdate: widget.isLocked ? null : _onScaleUpdate,
         onScaleEnd: widget.isLocked ? null : _onScaleEnd,
-        child: Stack(
-          clipBehavior: Clip.none,
-          children: [
-            FractionalTranslation(
-              translation: const Offset(-0.5, -0.5),
-              child: Transform.rotate(
-                angle: widget.element.transform.rotation,
-                alignment: Alignment.center,
-                child: Transform.scale(
-                  scale: effectiveScale,
-                  alignment: Alignment.center,
-                  child: Opacity(
-                    opacity: widget.element.opacity,
-                    child: _WatermarkElementContent(
-                      element: widget.element,
-                      contextData: widget.contextData,
-                    ),
+        child: Transform.rotate(
+          angle: widget.element.transform.rotation,
+          alignment: Alignment.center,
+          child: Transform.scale(
+            scale: effectiveScale,
+            alignment: Alignment.center,
+            child: Opacity(
+              opacity: widget.element.opacity,
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  _WatermarkElementContent(
+                    element: widget.element,
+                    contextData: widget.contextData,
                   ),
-                ),
+                  if (widget.selected)
+                    Positioned.fill(
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          border: Border.all(
+                              color: Colors.orangeAccent, width: 1.5),
+                        ),
+                      ),
+                    ),
+                  if (widget.selected)
+                    const Positioned.fill(
+                      child: IgnorePointer(
+                        child: Stack(
+                          children: [
+                            _SelectionHandle(alignment: Alignment.topLeft),
+                            _SelectionHandle(alignment: Alignment.topRight),
+                            _SelectionHandle(alignment: Alignment.bottomLeft),
+                            _SelectionHandle(alignment: Alignment.bottomRight),
+                          ],
+                        ),
+                      ),
+                    ),
+                  if (widget.selected && widget.onDelete != null)
+                    Positioned(
+                      top: -32,
+                      right: -32,
+                      child: IconButton(
+                        style: IconButton.styleFrom(
+                          backgroundColor: Colors.black54,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.all(6),
+                        ),
+                        icon: const Icon(Icons.delete_outline),
+                        onPressed: widget.onDelete,
+                      ),
+                    ),
+                ],
               ),
             ),
-            if (widget.selected)
-              Positioned.fill(
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    border: Border.all(color: Colors.orangeAccent, width: 1.5),
-                  ),
-                ),
-              ),
-            if (widget.selected)
-              const Positioned.fill(
-                child: IgnorePointer(
-                  child: Stack(
-                    children: [
-                      _SelectionHandle(alignment: Alignment.topLeft),
-                      _SelectionHandle(alignment: Alignment.topRight),
-                      _SelectionHandle(alignment: Alignment.bottomLeft),
-                      _SelectionHandle(alignment: Alignment.bottomRight),
-                    ],
-                  ),
-                ),
-              ),
-            if (widget.selected && widget.onDelete != null)
-              Positioned(
-                top: -32,
-                right: -32,
-                child: IconButton(
-                  style: IconButton.styleFrom(
-                    backgroundColor: Colors.black54,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.all(6),
-                  ),
-                  icon: const Icon(Icons.delete_outline),
-                  onPressed: widget.onDelete,
-                ),
-              ),
-          ],
+          ),
         ),
       ),
     );

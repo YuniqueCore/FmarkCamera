@@ -117,10 +117,10 @@ class _CameraScreenState extends State<CameraScreen>
   }
 
   Future<void> _initializeCamera() async {
-    // Web端需要特殊处理权限
+    // Web 端需要特殊处理权限
     if (kIsWeb) {
       try {
-        // Web端权限请求需要在用户手势中触发
+        // Web 端权限请求需要在用户手势中触发
         final permission = await Permission.camera.request();
         if (!permission.isGranted) {
           if (!mounted) return;
@@ -136,7 +136,7 @@ class _CameraScreenState extends State<CameraScreen>
           return;
         }
       } catch (e) {
-        // Web端权限API可能抛出异常，忽略并继续
+        // Web 端权限 API 可能抛出异常，忽略并继续
         debugPrint('Web camera permission check: $e');
       }
     } else {
@@ -176,7 +176,7 @@ class _CameraScreenState extends State<CameraScreen>
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('相机初始化失败: $e'),
+          content: Text('相机初始化失败：$e'),
           action: SnackBarAction(
             label: '重试',
             onPressed: _initializeCamera,
@@ -407,7 +407,7 @@ class _CameraScreenState extends State<CameraScreen>
       }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('切换闪光灯失败: ${error.description ?? error.code}'),
+          content: Text('切换闪光灯失败：${error.description ?? error.code}'),
         ),
       );
     } catch (error) {
@@ -415,7 +415,7 @@ class _CameraScreenState extends State<CameraScreen>
         return;
       }
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('切换闪光灯失败: $error')),
+        SnackBar(content: Text('切换闪光灯失败：$error')),
       );
     }
   }
@@ -764,23 +764,72 @@ class _CameraScreenState extends State<CameraScreen>
     if (controller == null) {
       return;
     }
+    if (_isRecording) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('录制中无法切换摄像头')),
+      );
+      return;
+    }
     final currentIndex = _availableCameras.indexOf(controller.description);
     final nextIndex = (currentIndex + 1) % _availableCameras.length;
     final nextCamera = _availableCameras[nextIndex];
-    final newController =
-        CameraController(nextCamera, ResolutionPreset.high, enableAudio: true);
-    await newController.initialize();
-    await _applyFlashMode(newController);
-    await controller.dispose();
-    await _profilesController.ensureCanvasSize(
-      _canvasSizeFromPreview(newController.value.previewSize),
-      force: true,
-    );
+
     setState(() {
-      _cameraController = newController;
-      _lastSyncedCanvasSize = null;
-      _focusIndicatorNormalized = null;
+      _isInitialized = false;
     });
+
+    CameraController? newController;
+    try {
+      newController = CameraController(
+        nextCamera,
+        ResolutionPreset.high,
+        enableAudio: true,
+      );
+      await newController.initialize();
+      await _applyFlashMode(newController);
+      await _profilesController.ensureCanvasSize(
+        _canvasSizeFromPreview(newController.value.previewSize),
+        force: true,
+      );
+      final previousController = _cameraController;
+      if (!mounted) {
+        await newController.dispose();
+        return;
+      }
+      setState(() {
+        _cameraController = newController;
+        _isInitialized = true;
+        _lastSyncedCanvasSize = null;
+        _focusIndicatorNormalized = null;
+      });
+      await previousController?.dispose();
+    } on CameraException catch (error) {
+      await newController?.dispose();
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _isInitialized = controller.value.isInitialized;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('切换摄像头失败：${error.description ?? error.code}'),
+        ),
+      );
+    } catch (error) {
+      await newController?.dispose();
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _isInitialized = controller.value.isInitialized;
+      });
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('切换摄像头失败：$error')));
+    }
   }
 
   Future<void> _capturePhoto() async {
@@ -850,7 +899,7 @@ class _CameraScreenState extends State<CameraScreen>
         }
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('停止录像失败: ${error.description ?? error.code}'),
+            content: Text('停止录像失败：${error.description ?? error.code}'),
           ),
         );
       } catch (error) {
@@ -859,7 +908,7 @@ class _CameraScreenState extends State<CameraScreen>
           return;
         }
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('停止录像失败: $error')),
+          SnackBar(content: Text('停止录像失败：$error')),
         );
       }
     } else {
@@ -892,7 +941,7 @@ class _CameraScreenState extends State<CameraScreen>
         }
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('开始录像失败: ${error.description ?? error.code}'),
+            content: Text('开始录像失败：${error.description ?? error.code}'),
           ),
         );
       } catch (error) {
@@ -900,7 +949,7 @@ class _CameraScreenState extends State<CameraScreen>
           return;
         }
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('开始录像失败: $error')),
+          SnackBar(content: Text('开始录像失败：$error')),
         );
       }
     }

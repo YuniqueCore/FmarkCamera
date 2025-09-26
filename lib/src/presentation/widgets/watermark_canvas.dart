@@ -30,6 +30,7 @@ class WatermarkCanvasView extends StatelessWidget {
         final ordered = [...elements]
           ..sort((a, b) => a.zIndex.compareTo(b.zIndex));
         return Stack(
+          fit: StackFit.expand,
           children: ordered
               .map(
                 (element) => WatermarkElementView(
@@ -75,6 +76,7 @@ class EditableWatermarkCanvas extends StatelessWidget {
         final ordered = [...elements]
           ..sort((a, b) => a.zIndex.compareTo(b.zIndex));
         return Stack(
+          fit: StackFit.expand,
           children: ordered
               .map(
                 (element) => EditableWatermarkElement(
