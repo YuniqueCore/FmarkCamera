@@ -31,6 +31,14 @@
 
   <title>fmark_camera</title>
   <link rel="manifest" href="manifest.json">
+
+  <!-- FFmpeg WASM requires SharedArrayBuffer -->
+  <script>
+    if (typeof SharedArrayBuffer === 'undefined') {
+      // Fallback for browsers that don't support SharedArrayBuffer
+      console.warn('SharedArrayBuffer not supported. FFmpeg WASM may not work properly.');
+    }
+  </script>
 </head>
 <body>
   <script src="flutter_bootstrap.js" async></script>

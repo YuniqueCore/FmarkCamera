@@ -22,6 +22,49 @@ import 'package:fmark_camera/src/presentation/profiles/profile_editor_screen.dar
 import 'package:fmark_camera/src/presentation/profiles/profiles_screen.dart';
 import 'package:fmark_camera/src/presentation/widgets/watermark_canvas.dart';
 
+class _ContextBadge extends StatelessWidget {
+  const _ContextBadge({required this.contextData});
+
+  final WatermarkContext contextData;
+
+  @override
+  Widget build(BuildContext context) {
+    final location = contextData.location;
+    final weather = contextData.weather;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.65),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              DateFormat('yyyy-MM-dd HH:mm').format(contextData.now),
+              style: const TextStyle(color: Colors.white, fontSize: 12),
+            ),
+            if (location != null)
+              Text(
+                location.address ??
+                    location.city ??
+                    '${location.latitude.toStringAsFixed(2)}, ${location.longitude.toStringAsFixed(2)}',
+                style: const TextStyle(color: Colors.white70, fontSize: 12),
+              ),
+            if (weather != null)
+              Text(
+                '${weather.temperatureCelsius.toStringAsFixed(1)}°C ${weather.description ?? ''}',
+                style: const TextStyle(color: Colors.white70, fontSize: 12),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class CameraScreen extends StatefulWidget {
   const CameraScreen({super.key, required this.bootstrapper});
 
@@ -68,32 +111,72 @@ class _CameraScreenState extends State<CameraScreen>
   }
 
   Future<void> _initializeCamera() async {
-    if (!kIsWeb) {
+    // Web端需要特殊处理权限
+    if (kIsWeb) {
+      try {
+        // Web端权限请求需要在用户手势中触发
+        final permission = await Permission.camera.request();
+        if (!permission.isGranted) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('需要相机权限才能使用此功能'),
+              action: SnackBarAction(
+                label: '设置',
+                onPressed: openAppSettings,
+              ),
+            ),
+          );
+          return;
+        }
+      } catch (e) {
+        // Web端权限API可能抛出异常，忽略并继续
+        debugPrint('Web camera permission check: $e');
+      }
+    } else {
       final permission = await Permission.camera.request();
       if (!permission.isGranted) {
         return;
       }
     }
-    _availableCameras = await availableCameras();
-    if (_availableCameras.isEmpty) {
+
+    try {
+      _availableCameras = await availableCameras();
+      if (_availableCameras.isEmpty) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('未找到可用的相机')),
+        );
+        return;
+      }
+      final controller = CameraController(
+        _availableCameras.first,
+        ResolutionPreset.high,
+        enableAudio: true,
+      );
+      await controller.initialize();
+      await _profilesController.ensureCanvasSize(
+        _canvasSizeFromPreview(controller.value.previewSize),
+        force: true,
+      );
+      setState(() {
+        _cameraController = controller;
+        _isInitialized = true;
+        _lastSyncedCanvasSize = null;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('相机初始化失败: $e'),
+          action: SnackBarAction(
+            label: '重试',
+            onPressed: _initializeCamera,
+          ),
+        ),
+      );
       return;
     }
-    final controller = CameraController(
-      _availableCameras.first,
-      ResolutionPreset.high,
-      enableAudio: true,
-    );
-    await controller.initialize();
-    await _profilesController.ensureCanvasSize(
-      _canvasSizeFromPreview(controller.value.previewSize),
-      force: true,
-    );
-    setState(() {
-      _cameraController = controller;
-      _isInitialized = true;
-      _lastSyncedCanvasSize = null;
-    });
-  }
 
   @override
   void dispose() {
@@ -202,6 +285,7 @@ class _CameraScreenState extends State<CameraScreen>
     );
   }
 
+  // Private helper methods - all methods moved here
   WatermarkCanvasSize _fallbackCanvasSize() =>
       const WatermarkCanvasSize(width: 1080, height: 1920);
 
@@ -609,47 +693,6 @@ class _CameraScreenState extends State<CameraScreen>
     );
     await _projectsController.addProject(project);
   }
+
 }
 
-class _ContextBadge extends StatelessWidget {
-  const _ContextBadge({required this.contextData});
-
-  final WatermarkContext contextData;
-
-  @override
-  Widget build(BuildContext context) {
-    final location = contextData.location;
-    final weather = contextData.weather;
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.65),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              DateFormat('yyyy-MM-dd HH:mm').format(contextData.now),
-              style: const TextStyle(color: Colors.white, fontSize: 12),
-            ),
-            if (location != null)
-              Text(
-                location.address ??
-                    location.city ??
-                    '${location.latitude.toStringAsFixed(2)}, ${location.longitude.toStringAsFixed(2)}',
-                style: const TextStyle(color: Colors.white70, fontSize: 12),
-              ),
-            if (weather != null)
-              Text(
-                '${weather.temperatureCelsius.toStringAsFixed(1)}°C ${weather.description ?? ''}',
-                style: const TextStyle(color: Colors.white70, fontSize: 12),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-}

@@ -530,7 +530,7 @@ class _CaptureDetailPageState extends State<_CaptureDetailPage> {
         photo: mediaInput,
         overlay: overlayInput,
         options: WatermarkExportOptions(
-          destination: WatermarkExportDestination.filePicker,
+          destination: WatermarkExportDestination.gallery,
           suggestedFileName: '${_profile.name}_${_project.id}.jpg',
         ),
       );
@@ -539,7 +539,7 @@ class _CaptureDetailPageState extends State<_CaptureDetailPage> {
         video: mediaInput,
         overlay: overlayInput,
         options: WatermarkExportOptions(
-          destination: WatermarkExportDestination.filePicker,
+          destination: WatermarkExportDestination.gallery,
           suggestedFileName: '${_profile.name}_${_project.id}.mp4',
         ),
       );
