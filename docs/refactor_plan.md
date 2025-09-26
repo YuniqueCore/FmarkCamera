@@ -142,6 +142,33 @@ you should use serena mcp tool, and use tavily / web search, desktop_commander a
 
   - 建议在真机与 Web 环境分别回归录制/切换流程，确认不同硬件下的表现。
   - 若需要进一步精细操作，可评估在画布上增加旋转/缩放专用控制柄或数值微调快捷键。
+结论：已在 Android 端补齐摄像头能力枚举通道，并重构相机初始化/预览渲染，预览画幅与导出图片一致，切换前后摄不再黑屏；后
+  续需要把新分辨率数据接入设置界面。
+
+  - android/app/src/main/kotlin/com/example/fmark_camera/MainActivity.kt:14-82：新增 MethodChannel
+  com.example.fmark_camera/capabilities，通过 CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP 拉取照片/视频输出尺
+  寸列表，为 Dart 侧提供真实能力数据。citeturn1search1
+  - lib/src/services/camera_capabilities_service.dart:7-105：新增能力服务，缓存解析 channel 返回的分辨率信息，并提供
+  findById/loadCapabilities API。
+  - lib/src/services/bootstrapper.dart:22-59：注入 CameraCapabilitiesService，便于相机页面与后续设置页共享能力数据。
+  - lib/src/domain/models/camera_resolution_info.dart:7-48：补充 aspectRatio/pixelCount 及相等判断，为分辨率选型与缓存比
+  对提供基础值对象支持。
+  - lib/src/presentation/camera/camera_screen.dart:164-1250：
+      - 初始化前统一申请权限、串行化 _isInitializing 流程，并在启动新 CameraController 前显式 dispose 旧实例，切换前后摄
+  稳定（_initializeCamera / _switchCamera）。
+      - 根据能力列表挑选与 ResolutionPreset 对应的目标尺寸，记录 _currentCaptureInfo 并将其同步到 Profile/Gallery；预览
+  叠加层改用 FittedBox+ClipRect 按真实画幅居中呈现，_syncCanvasSizeIfNeeded/_storeCapture/_buildPreviewLayer 均围绕捕获
+  尺寸调整。
+      - 录像场景写入 _currentCaptureInfo，图片/视频项目保存时 canvas 与 overlay 均以捕获分辨率绘制，导出比例与所见一致。
+  - 运行 flutter analyze 时仍存在既有的 watermark_element_widget.dart 未用字段/方法警告（后续重构编辑器时一并处理），新
+  改动未引入新增告警。
+
+  后续建议
+
+  1. 在设置页使用 CameraCapabilitiesService 输出的分辨率集合，替换现有 ResolutionPreset 下拉文案，允许用户按真实格式
+  选择。
+  2. 针对编辑器遗留的未用字段/工具栏逻辑做清理或改造，消除分析告警。
+  3. 实机回归：不同分辨率下拍照/录像、切换摄像头、导出带/不带水印、Gallery 缩略图。
 
 
 
