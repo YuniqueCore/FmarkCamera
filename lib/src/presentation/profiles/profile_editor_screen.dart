@@ -490,7 +490,7 @@ class _ProfileEditorScreenState extends State<ProfileEditorScreen> {
     final presets = [
       'yyyy-MM-dd HH:mm:ss',
       'yyyy/MM/dd HH:mm',
-      'MM月dd日 HH:mm',
+      'MM 月 dd 日 HH:mm',
       'HH:mm:ss',
     ];
     final controller = TextEditingController(
