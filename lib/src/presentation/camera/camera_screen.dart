@@ -177,6 +177,7 @@ class _CameraScreenState extends State<CameraScreen>
       );
       return;
     }
+  }
 
   @override
   void dispose() {
@@ -285,7 +286,7 @@ class _CameraScreenState extends State<CameraScreen>
     );
   }
 
-  // Private helper methods - all methods moved here
+  // Private helper methods
   WatermarkCanvasSize _fallbackCanvasSize() =>
       const WatermarkCanvasSize(width: 1080, height: 1920);
 
@@ -693,6 +694,5 @@ class _CameraScreenState extends State<CameraScreen>
     );
     await _projectsController.addProject(project);
   }
-
 }
 
