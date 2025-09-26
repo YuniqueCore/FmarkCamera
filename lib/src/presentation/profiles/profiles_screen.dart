@@ -21,6 +21,10 @@ class ProfilesScreen extends StatefulWidget {
 class _ProfilesScreenState extends State<ProfilesScreen> {
   late final WatermarkProfilesController _profilesController;
 
+  void _disposeControllerLater(TextEditingController controller) {
+    WidgetsBinding.instance.addPostFrameCallback((_) => controller.dispose());
+  }
+
   @override
   void initState() {
     super.initState();
@@ -267,7 +271,7 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
         ],
       ),
     );
-    controller.dispose();
+    _disposeControllerLater(controller);
     return result;
   }
 

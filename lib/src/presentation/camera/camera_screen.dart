@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
@@ -10,11 +11,13 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:uuid/uuid.dart';
 import 'package:video_thumbnail/video_thumbnail.dart' as video_thumbnail;
 
+import 'package:fmark_camera/src/domain/models/camera_resolution_info.dart';
 import 'package:fmark_camera/src/domain/models/watermark_context.dart';
 import 'package:fmark_camera/src/domain/models/watermark_media_type.dart';
 import 'package:fmark_camera/src/domain/models/watermark_profile.dart';
 import 'package:fmark_camera/src/domain/models/watermark_project.dart';
 import 'package:fmark_camera/src/services/bootstrapper.dart';
+import 'package:fmark_camera/src/services/camera_settings_controller.dart';
 import 'package:fmark_camera/src/services/watermark_context_controller.dart';
 import 'package:fmark_camera/src/services/watermark_exporter.dart';
 import 'package:fmark_camera/src/services/watermark_profiles_controller.dart';
@@ -23,6 +26,7 @@ import 'package:fmark_camera/src/services/watermark_renderer.dart';
 import 'package:fmark_camera/src/presentation/gallery/gallery_screen.dart';
 import 'package:fmark_camera/src/presentation/profiles/profile_editor_screen.dart';
 import 'package:fmark_camera/src/presentation/profiles/profiles_screen.dart';
+import 'package:fmark_camera/src/presentation/settings/settings_screen.dart';
 import 'package:fmark_camera/src/presentation/widgets/watermark_canvas.dart';
 
 class _ContextBadge extends StatelessWidget {
@@ -85,14 +89,19 @@ class _CameraScreenState extends State<CameraScreen>
 
   CameraController? _cameraController;
   List<CameraDescription> _availableCameras = const <CameraDescription>[];
+  int _cameraIndex = 0;
   bool _isInitialized = false;
   bool _isRecording = false;
   bool _isVideoMode = false;
   Size? _lastSyncedCanvasSize;
+  Size? _currentPreviewSize;
   FlashMode _flashMode = FlashMode.auto;
   Offset? _focusIndicatorNormalized;
   Timer? _focusIndicatorTimer;
+  ResolutionPreset? _lastAppliedPhotoPreset;
+  ResolutionPreset? _lastAppliedVideoPreset;
 
+  late final CameraSettingsController _settingsController;
   late final WatermarkProfilesController _profilesController;
   late final WatermarkProjectsController _projectsController;
   late final WatermarkContextController _contextController;
@@ -104,6 +113,8 @@ class _CameraScreenState extends State<CameraScreen>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     final bootstrapper = widget.bootstrapper;
+    _settingsController = bootstrapper.cameraSettingsController;
+    _settingsController.addListener(_handleSettingsChanged);
     _profilesController = bootstrapper.profilesController;
     _projectsController = bootstrapper.projectsController;
     _contextController = bootstrapper.contextController;
@@ -112,7 +123,36 @@ class _CameraScreenState extends State<CameraScreen>
     _initialize();
   }
 
+  CameraCaptureMode get _currentMode =>
+      _isVideoMode ? CameraCaptureMode.video : CameraCaptureMode.photo;
+
+  ResolutionPreset get _activePreset => _currentMode == CameraCaptureMode.video
+      ? _settingsController.videoPreset
+      : _settingsController.photoPreset;
+
+  void _handleSettingsChanged() {
+    final desiredPhoto = _settingsController.photoPreset;
+    final desiredVideo = _settingsController.videoPreset;
+    final needsReinitialize = _currentMode == CameraCaptureMode.photo
+        ? desiredPhoto != _lastAppliedPhotoPreset
+        : desiredVideo != _lastAppliedVideoPreset;
+    if (!needsReinitialize) {
+      return;
+    }
+    _initialize();
+  }
+
   Future<void> _initialize() async {
+    await _initializeCamera();
+  }
+
+  Future<void> _toggleCaptureMode() async {
+    if (_isRecording) {
+      return;
+    }
+    setState(() {
+      _isVideoMode = !_isVideoMode;
+    });
     await _initializeCamera();
   }
 
@@ -155,23 +195,49 @@ class _CameraScreenState extends State<CameraScreen>
         );
         return;
       }
+      if (_cameraIndex >= _availableCameras.length) {
+        _cameraIndex = 0;
+      }
+      final camera = _availableCameras[_cameraIndex];
+      final preset = _activePreset;
       final controller = CameraController(
-        _availableCameras.first,
-        ResolutionPreset.high,
-        enableAudio: true,
+        camera,
+        preset,
+        enableAudio: _currentMode == CameraCaptureMode.video,
       );
       await controller.initialize();
       await _applyFlashMode(controller);
+      final previewSize = controller.value.previewSize;
+      final effectivePreview = _canvasSizeFromPreview(previewSize);
       await _profilesController.ensureCanvasSize(
-        _canvasSizeFromPreview(controller.value.previewSize),
+        effectivePreview,
         force: true,
       );
+      final resolutionInfo = previewSize == null
+          ? null
+          : CameraResolutionInfo(
+              width: previewSize.width,
+              height: previewSize.height,
+            );
+      if (resolutionInfo != null) {
+        await _settingsController.savePreviewInfo(
+          _currentMode,
+          preset,
+          resolutionInfo,
+        );
+      }
       setState(() {
         _cameraController = controller;
         _isInitialized = true;
         _lastSyncedCanvasSize = null;
         _focusIndicatorNormalized = null;
+        _currentPreviewSize = effectivePreview.toSize();
       });
+      if (_currentMode == CameraCaptureMode.photo) {
+        _lastAppliedPhotoPreset = preset;
+      } else {
+        _lastAppliedVideoPreset = preset;
+      }
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -190,6 +256,7 @@ class _CameraScreenState extends State<CameraScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _settingsController.removeListener(_handleSettingsChanged);
     _focusIndicatorTimer?.cancel();
     _cameraController?.dispose();
     super.dispose();
@@ -288,6 +355,12 @@ class _CameraScreenState extends State<CameraScreen>
                           debugPrint('resumePreview skipped: $error');
                         }
                       },
+              ),
+              IconButton(
+                tooltip: '设置',
+                icon: const Icon(Icons.settings_outlined),
+                onPressed: () =>
+                    Navigator.of(context).pushNamed(SettingsScreen.routeName),
               ),
               IconButton(
                 tooltip: '图库',
@@ -717,10 +790,18 @@ class _CameraScreenState extends State<CameraScreen>
                     _isVideoMode ? Icons.videocam : Icons.camera,
                     color: Colors.white,
                   ),
-                  onPressed: () => setState(() => _isVideoMode = !_isVideoMode),
+                  onPressed: _toggleCaptureMode,
                 ),
               ],
             ),
+            if (_currentPreviewSize != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(
+                  '当前预览: ${_currentPreviewSize!.width.toInt()}x${_currentPreviewSize!.height.toInt()} (${_activePreset.name})',
+                  style: const TextStyle(color: Colors.white54, fontSize: 12),
+                ),
+              ),
           ],
         ),
       ),
@@ -773,7 +854,10 @@ class _CameraScreenState extends State<CameraScreen>
       );
       return;
     }
-    final currentIndex = _availableCameras.indexOf(controller.description);
+    var currentIndex = _availableCameras.indexOf(controller.description);
+    if (currentIndex < 0) {
+      currentIndex = _cameraIndex;
+    }
     final nextIndex = (currentIndex + 1) % _availableCameras.length;
     final nextCamera = _availableCameras[nextIndex];
 
@@ -785,26 +869,45 @@ class _CameraScreenState extends State<CameraScreen>
     try {
       newController = CameraController(
         nextCamera,
-        ResolutionPreset.high,
-        enableAudio: true,
+        _activePreset,
+        enableAudio: _currentMode == CameraCaptureMode.video,
       );
       await newController.initialize();
       await _applyFlashMode(newController);
+      final previewSize = newController.value.previewSize;
+      final effectivePreview = _canvasSizeFromPreview(previewSize);
       await _profilesController.ensureCanvasSize(
-        _canvasSizeFromPreview(newController.value.previewSize),
+        effectivePreview,
         force: true,
       );
+      if (previewSize != null) {
+        await _settingsController.savePreviewInfo(
+          _currentMode,
+          _activePreset,
+          CameraResolutionInfo(
+            width: previewSize.width,
+            height: previewSize.height,
+          ),
+        );
+      }
       final previousController = _cameraController;
       if (!mounted) {
         await newController.dispose();
         return;
       }
       setState(() {
+        _cameraIndex = nextIndex;
         _cameraController = newController;
         _isInitialized = true;
         _lastSyncedCanvasSize = null;
         _focusIndicatorNormalized = null;
+        _currentPreviewSize = effectivePreview.toSize();
       });
+      if (_currentMode == CameraCaptureMode.photo) {
+        _lastAppliedPhotoPreset = _activePreset;
+      } else {
+        _lastAppliedVideoPreset = _activePreset;
+      }
       await previousController?.dispose();
     } on CameraException catch (error) {
       await newController?.dispose();
@@ -840,18 +943,27 @@ class _CameraScreenState extends State<CameraScreen>
     }
     final file = await controller.takePicture();
     String? mediaDataBase64;
+    Uint8List? capturedBytes;
     if (kIsWeb) {
       try {
-        final bytes = await file.readAsBytes();
-        mediaDataBase64 = base64Encode(bytes);
+        capturedBytes = await file.readAsBytes();
+        mediaDataBase64 = base64Encode(capturedBytes);
       } catch (_) {
         mediaDataBase64 = null;
       }
+    }
+    Size? captureSize;
+    try {
+      final bytes = capturedBytes ?? await file.readAsBytes();
+      captureSize = await _decodeImageSize(bytes);
+    } catch (_) {
+      captureSize = null;
     }
     await _storeCapture(
       path: file.path,
       mediaType: WatermarkMediaType.photo,
       previewSize: controller.value.previewSize,
+      captureSize: captureSize,
       aspectRatio: controller.value.aspectRatio,
       profile: profile,
       mediaDataBase64: mediaDataBase64,
@@ -882,6 +994,7 @@ class _CameraScreenState extends State<CameraScreen>
           path: file.path,
           mediaType: WatermarkMediaType.video,
           previewSize: controller.value.previewSize,
+          captureSize: null,
           aspectRatio: controller.value.aspectRatio,
           profile: profile,
           thumbnailData: thumbnailData,
@@ -973,20 +1086,47 @@ class _CameraScreenState extends State<CameraScreen>
     }
   }
 
+  Future<Size?> _decodeImageSize(Uint8List bytes) async {
+    try {
+      final codec = await ui.instantiateImageCodec(bytes);
+      final frame = await codec.getNextFrame();
+      final image = frame.image;
+      codec.dispose();
+      return Size(image.width.toDouble(), image.height.toDouble());
+    } catch (error) {
+      debugPrint('Decode image size failed: $error');
+      return null;
+    }
+  }
+
   Future<void> _storeCapture({
     required String path,
     required WatermarkMediaType mediaType,
     required Size? previewSize,
+    required Size? captureSize,
     required double aspectRatio,
     required WatermarkProfile profile,
     String? mediaDataBase64,
     String? thumbnailData,
   }) async {
     final contextData = _contextController.context;
-    final canvasSize = profile.canvasSize ??
-        (previewSize == null
-            ? _fallbackCanvasSize()
-            : _canvasSizeFromPreview(previewSize));
+    final WatermarkCanvasSize baseCanvas;
+    if (captureSize != null &&
+        captureSize.width > 0 &&
+        captureSize.height > 0) {
+      baseCanvas = WatermarkCanvasSize(
+        width: captureSize.width,
+        height: captureSize.height,
+        pixelRatio: WidgetsBinding
+                .instance.platformDispatcher.implicitView?.devicePixelRatio ??
+            1,
+      );
+    } else if (previewSize != null) {
+      baseCanvas = _canvasSizeFromPreview(previewSize);
+    } else {
+      baseCanvas = _fallbackCanvasSize();
+    }
+    final canvasSize = profile.canvasSize ?? baseCanvas;
     String? overlayPath;
     String? overlayData;
     String? resolvedThumbnail = thumbnailData;
@@ -1007,6 +1147,10 @@ class _CameraScreenState extends State<CameraScreen>
       overlayData = null;
     }
 
+    final computedRatio = canvasSize.height == 0
+        ? aspectRatio
+        : canvasSize.width / canvasSize.height;
+
     final project = WatermarkProject(
       id: _uuid.v4(),
       mediaPath: path,
@@ -1014,7 +1158,7 @@ class _CameraScreenState extends State<CameraScreen>
       capturedAt: DateTime.now(),
       profileId: profile.id,
       canvasSize: canvasSize,
-      previewRatio: aspectRatio,
+      previewRatio: computedRatio,
       overlayPath: overlayPath,
       overlayData: overlayData,
       thumbnailData: resolvedThumbnail,

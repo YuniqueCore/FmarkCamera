@@ -34,6 +34,12 @@ class _ProfileEditorScreenState extends State<ProfileEditorScreen> {
   late final WatermarkProfilesController _profilesController;
   late final WatermarkContextController _contextController;
 
+  void _disposeControllerLater(TextEditingController controller) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      controller.dispose();
+    });
+  }
+
   late WatermarkProfile _profile;
   late WatermarkContext _context;
   String? _selectedElementId;
@@ -482,7 +488,7 @@ class _ProfileEditorScreenState extends State<ProfileEditorScreen> {
         ],
       ),
     );
-    controller.dispose();
+    _disposeControllerLater(controller);
     if (result == null || result.isEmpty) {
       return;
     }
@@ -579,7 +585,7 @@ class _ProfileEditorScreenState extends State<ProfileEditorScreen> {
         );
       },
     );
-    controller.dispose();
+    _disposeControllerLater(controller);
     if (result == null || result.isEmpty) {
       return;
     }
@@ -772,12 +778,22 @@ class _ProfileEditorScreenState extends State<ProfileEditorScreen> {
       Colors.redAccent,
       Colors.greenAccent,
     ];
+    final fontController =
+        TextEditingController(text: fontSize.toStringAsFixed(0));
     await showModalBottomSheet<void>(
       context: context,
       builder: (context) {
         return SafeArea(
           child: StatefulBuilder(
             builder: (context, setModalState) {
+              void syncFont(double value) {
+                final clamped = value.clamp(8, 120);
+                setModalState(() {
+                  fontSize = clamped.toDouble();
+                  fontController.text = fontSize.toStringAsFixed(0);
+                });
+              }
+
               return Padding(
                 padding: const EdgeInsets.all(16),
                 child: Column(
@@ -792,15 +808,34 @@ class _ProfileEditorScreenState extends State<ProfileEditorScreen> {
                             style: TextStyle(color: Colors.white70)),
                         Expanded(
                           child: Slider(
-                            value: fontSize.clamp(10, 72),
-                            min: 10,
-                            max: 72,
-                            onChanged: (value) =>
-                                setModalState(() => fontSize = value),
+                            value: fontSize.clamp(8, 120),
+                            min: 8,
+                            max: 120,
+                            onChanged: syncFont,
                           ),
                         ),
-                        Text(fontSize.toStringAsFixed(0),
-                            style: const TextStyle(color: Colors.white70)),
+                        SizedBox(
+                          width: 56,
+                          child: TextField(
+                            controller: fontController,
+                            keyboardType: const TextInputType.numberWithOptions(
+                              signed: false,
+                              decimal: false,
+                            ),
+                            decoration: const InputDecoration(
+                              isDense: true,
+                              contentPadding: EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 6),
+                              border: OutlineInputBorder(),
+                            ),
+                            onChanged: (value) {
+                              final parsed = double.tryParse(value);
+                              if (parsed != null) {
+                                syncFont(parsed);
+                              }
+                            },
+                          ),
+                        ),
                       ],
                     ),
                     SwitchListTile(
@@ -868,6 +903,7 @@ class _ProfileEditorScreenState extends State<ProfileEditorScreen> {
         );
       },
     );
+    _disposeControllerLater(fontController);
   }
 
   Future<void> _openTransformSheet(WatermarkElement element) async {
@@ -953,6 +989,10 @@ class _ProfileEditorScreenState extends State<ProfileEditorScreen> {
         );
       },
     );
+    _disposeControllerLater(positionX);
+    _disposeControllerLater(positionY);
+    _disposeControllerLater(scaleController);
+    _disposeControllerLater(rotationController);
     if (confirmed != true) {
       return;
     }

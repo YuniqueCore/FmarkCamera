@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io' show File;
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -100,6 +101,11 @@ class _EditableWatermarkElementState extends State<EditableWatermarkElement> {
   late double _initialScale;
   late double _initialRotation;
   Offset? _lastFocalPoint;
+  double _rotationDuringDrag = 0;
+
+  static const double _nudgeStep = 0.01;
+  static const double _scaleStep = 0.05;
+  static const double _rotationStep = math.pi / 90; // 2° increments
 
   @override
   void initState() {
@@ -121,6 +127,7 @@ class _EditableWatermarkElementState extends State<EditableWatermarkElement> {
     _currentPosition = transform.position;
     _initialScale = transform.scale;
     _initialRotation = transform.rotation;
+    _rotationDuringDrag = transform.rotation;
   }
 
   void _onScaleStart(ScaleStartDetails details) {
@@ -152,18 +159,70 @@ class _EditableWatermarkElementState extends State<EditableWatermarkElement> {
       );
     }
     final scale = (_initialScale * details.scale).clamp(0.3, 3.0);
-    final rotation = _initialRotation + details.rotation;
     widget.onTransform(
       widget.element.transform.copyWith(
         position: _currentPosition,
         scale: scale,
-        rotation: rotation,
+        rotation: _initialRotation,
       ),
     );
   }
 
   void _onScaleEnd(ScaleEndDetails details) {
     _lastFocalPoint = null;
+  }
+
+  void _onRotationDragStart(DragStartDetails details) {
+    if (widget.isLocked) {
+      return;
+    }
+    widget.onSelected?.call();
+    _rotationDuringDrag = widget.element.transform.rotation;
+  }
+
+  void _onRotationDragUpdate(DragUpdateDetails details) {
+    if (widget.isLocked) {
+      return;
+    }
+    final nextRotation = (_rotationDuringDrag + details.delta.dx * 0.01)
+        .clamp(-math.pi, math.pi);
+    _rotationDuringDrag = nextRotation;
+    widget.onTransform(
+      widget.element.transform.copyWith(rotation: nextRotation),
+    );
+  }
+
+  void _nudgePosition(Offset delta) {
+    if (widget.isLocked) {
+      return;
+    }
+    final normalized = Offset(
+      (widget.element.transform.position.dx + delta.dx).clamp(0.0, 1.0),
+      (widget.element.transform.position.dy + delta.dy).clamp(0.0, 1.0),
+    );
+    widget.onTransform(
+      widget.element.transform.copyWith(position: normalized),
+    );
+  }
+
+  void _adjustScale(double delta) {
+    if (widget.isLocked) {
+      return;
+    }
+    final scale = (widget.element.transform.scale + delta).clamp(0.3, 3.0);
+    widget.onTransform(
+      widget.element.transform.copyWith(scale: scale),
+    );
+  }
+
+  void _adjustRotation(double delta) {
+    if (widget.isLocked) {
+      return;
+    }
+    final rotation = widget.element.transform.rotation + delta;
+    widget.onTransform(
+      widget.element.transform.copyWith(rotation: rotation),
+    );
   }
 
   @override
@@ -227,18 +286,33 @@ class _EditableWatermarkElementState extends State<EditableWatermarkElement> {
                         ),
                       ),
                     ),
-                  if (widget.selected && widget.onDelete != null)
+                  if (widget.selected)
                     Positioned(
-                      top: -32,
-                      right: -32,
-                      child: IconButton(
-                        style: IconButton.styleFrom(
-                          backgroundColor: Colors.black54,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.all(6),
+                      top: -48,
+                      left: 0,
+                      right: 0,
+                      child: Center(
+                        child: _RotationHandle(
+                          onPanStart: _onRotationDragStart,
+                          onPanUpdate: _onRotationDragUpdate,
+                          isLocked: widget.isLocked,
                         ),
-                        icon: const Icon(Icons.delete_outline),
-                        onPressed: widget.onDelete,
+                      ),
+                    ),
+                  if (widget.selected)
+                    Positioned(
+                      left: -16,
+                      right: -16,
+                      bottom: -56,
+                      child: _ElementToolbar(
+                        isLocked: widget.isLocked,
+                        onDelete: widget.onDelete,
+                        onNudge: _nudgePosition,
+                        onScale: _adjustScale,
+                        onRotate: _adjustRotation,
+                        nudgeStep: _nudgeStep,
+                        scaleStep: _scaleStep,
+                        rotationStep: _rotationStep,
                       ),
                     ),
                 ],
@@ -412,6 +486,176 @@ class _SelectionHandle extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _RotationHandle extends StatelessWidget {
+  const _RotationHandle({
+    required this.onPanStart,
+    required this.onPanUpdate,
+    required this.isLocked,
+  });
+
+  final GestureDragStartCallback? onPanStart;
+  final GestureDragUpdateCallback? onPanUpdate;
+  final bool isLocked;
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = !isLocked;
+    return GestureDetector(
+      onPanStart: enabled ? onPanStart : null,
+      onPanUpdate: enabled ? onPanUpdate : null,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: enabled ? Colors.blueAccent : Colors.white24,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: const [
+            BoxShadow(
+                color: Colors.black54, blurRadius: 4, offset: Offset(0, 2)),
+          ],
+        ),
+        child: const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Icon(Icons.rotate_right, color: Colors.white, size: 18),
+        ),
+      ),
+    );
+  }
+}
+
+class _ElementToolbar extends StatelessWidget {
+  const _ElementToolbar({
+    required this.isLocked,
+    required this.onDelete,
+    required this.onNudge,
+    required this.onScale,
+    required this.onRotate,
+    required this.nudgeStep,
+    required this.scaleStep,
+    required this.rotationStep,
+  });
+
+  final bool isLocked;
+  final VoidCallback? onDelete;
+  final void Function(Offset delta) onNudge;
+  final void Function(double delta) onScale;
+  final void Function(double delta) onRotate;
+  final double nudgeStep;
+  final double scaleStep;
+  final double rotationStep;
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = !isLocked;
+    final actions = <Widget>[
+      if (onDelete != null)
+        _ToolbarButton(
+          icon: Icons.delete_outline,
+          enabled: enabled,
+          tooltip: '删除元素',
+          onPressed: onDelete,
+        ),
+      _ToolbarButton(
+        icon: Icons.arrow_upward,
+        enabled: enabled,
+        tooltip: '上移',
+        onPressed: () => onNudge(Offset(0, -nudgeStep)),
+      ),
+      _ToolbarButton(
+        icon: Icons.arrow_downward,
+        enabled: enabled,
+        tooltip: '下移',
+        onPressed: () => onNudge(Offset(0, nudgeStep)),
+      ),
+      _ToolbarButton(
+        icon: Icons.arrow_back,
+        enabled: enabled,
+        tooltip: '左移',
+        onPressed: () => onNudge(Offset(-nudgeStep, 0)),
+      ),
+      _ToolbarButton(
+        icon: Icons.arrow_forward,
+        enabled: enabled,
+        tooltip: '右移',
+        onPressed: () => onNudge(Offset(nudgeStep, 0)),
+      ),
+      const SizedBox(width: 8),
+      _ToolbarButton(
+        icon: Icons.zoom_in,
+        enabled: enabled,
+        tooltip: '放大',
+        onPressed: () => onScale(scaleStep),
+      ),
+      _ToolbarButton(
+        icon: Icons.zoom_out,
+        enabled: enabled,
+        tooltip: '缩小',
+        onPressed: () => onScale(-scaleStep),
+      ),
+      const SizedBox(width: 8),
+      _ToolbarButton(
+        icon: Icons.rotate_left,
+        enabled: enabled,
+        tooltip: '向左旋转',
+        onPressed: () => onRotate(-rotationStep),
+      ),
+      _ToolbarButton(
+        icon: Icons.rotate_right,
+        enabled: enabled,
+        tooltip: '向右旋转',
+        onPressed: () => onRotate(rotationStep),
+      ),
+    ];
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.75),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: const [
+          BoxShadow(color: Colors.black54, blurRadius: 6, offset: Offset(0, 2)),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        child: Wrap(
+          alignment: WrapAlignment.center,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: 4,
+          runSpacing: 4,
+          children: actions,
+        ),
+      ),
+    );
+  }
+}
+
+class _ToolbarButton extends StatelessWidget {
+  const _ToolbarButton({
+    required this.icon,
+    required this.enabled,
+    required this.tooltip,
+    required this.onPressed,
+  });
+
+  final IconData icon;
+  final bool enabled;
+  final String tooltip;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final button = IconButton(
+      iconSize: 18,
+      constraints: const BoxConstraints.tightFor(width: 32, height: 32),
+      padding: EdgeInsets.zero,
+      onPressed: enabled ? onPressed : null,
+      icon: Icon(icon, color: enabled ? Colors.white : Colors.white24),
+    );
+    return Tooltip(
+      message: tooltip,
+      child: button,
     );
   }
 }
