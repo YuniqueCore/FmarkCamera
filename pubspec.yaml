@@ -20,7 +20,8 @@ dependencies:
   image_picker: ^1.0.7
   path_provider: ^2.1.2
   ffmpeg_wasm: ^1.0.3
-  ffmpeg_kit_flutter_full_gpl: ^6.0.3
+  # use ffmpeg_kit_flutter_new instead of others, such as ffmpeg_kit_flutter_full_gpl which is disconnected now.
+  ffmpeg_kit_flutter_new: ^3.2.0
   gal: ^2.3.2
   flutter_file_dialog: ^3.0.2
   gallery_saver_plus: ^3.2.9

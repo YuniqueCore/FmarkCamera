@@ -2,8 +2,8 @@ import 'dart:developer' as developer;
 import 'dart:io' show File;
 import 'dart:typed_data';
 
-import 'package:ffmpeg_kit_flutter_full_gpl/ffmpeg_kit.dart';
-import 'package:ffmpeg_kit_flutter_full_gpl/return_code.dart';
+import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';
+import 'package:ffmpeg_kit_flutter_new/return_code.dart';
 import 'package:flutter_file_dialog/flutter_file_dialog.dart';
 import 'package:gal/gal.dart';
 import 'package:gallery_saver_plus/gallery_saver.dart';
@@ -353,7 +353,7 @@ class IoWatermarkExporter implements WatermarkExporter {
         .where((message) => message.isNotEmpty)
         .take(5)
         .join('\n');
-    throw Exception('FFmpeg 执行失败: $logMessages');
+    throw Exception('FFmpeg 执行失败：$logMessages');
   }
 
   Future<WatermarkExportResult> _handleDestination({
