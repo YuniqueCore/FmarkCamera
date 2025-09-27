@@ -815,31 +815,6 @@ class _CameraScreenState extends State<CameraScreen>
         previewSize.height <= 0) {
       return fallback;
     }
-
-    // 相机预览尺寸通常是横屏的（width > height）
-    final isLandscapePreview = previewSize.width > previewSize.height;
-
-    // 根据屏幕方向调整预览尺寸
-    if (orientation == Orientation.portrait) {
-      // 竖屏模式下，如果预览是横屏的，需要调整为适合竖屏显示的尺寸
-      if (isLandscapePreview) {
-        // 保持预览的宽高比，但调整尺寸使其适合竖屏显示
-        final aspectRatio = previewSize.width / previewSize.height;
-        if (aspectRatio > 1.0) {
-          // 横屏预览，计算合适的显示尺寸
-          return Size(previewSize.height * aspectRatio, previewSize.height);
-        }
-      }
-    } else if (orientation == Orientation.landscape) {
-      // 横屏模式下，如果预览是竖屏的，需要调整
-      if (!isLandscapePreview) {
-        final aspectRatio = previewSize.width / previewSize.height;
-        if (aspectRatio < 1.0) {
-          return Size(previewSize.height * aspectRatio, previewSize.height);
-        }
-      }
-    }
-
     return previewSize;
   }
 
@@ -1267,8 +1242,8 @@ class _CameraScreenState extends State<CameraScreen>
     if (candidate == null || candidate.width <= 0 || candidate.height <= 0) {
       canvasSize = baseCanvas;
     } else {
-      final aspectDiff =
-          (candidate.width / candidate.height) - (baseCanvas.width / baseCanvas.height);
+      final aspectDiff = (candidate.width / candidate.height) -
+          (baseCanvas.width / baseCanvas.height);
       if (aspectDiff.abs() <= 0.02) {
         canvasSize = candidate;
       } else {
@@ -1376,23 +1351,25 @@ CameraResolutionInfo? _selectCaptureInfo({
       return sizes.first; // 返回最高分辨率
 
     case ResolutionPreset.ultraHigh:
-      // 寻找 4K 分辨率（3840x2160 或 3264x2448）
+      // 分辨率：宽*高
+      // 寻找 4K 分辨率（2160*3840 或 2448*3264）
+      // 分辨率应该是 3:4 或者 9/16
       return _pickResolution(
             sizes,
-            minWidth: 3840,
-            minHeight: 2160,
+            minHeight: 3840,
+            minWidth: 2160,
             preferredAspect: 16 / 9,
           ) ??
           _pickResolution(
             sizes,
-            minWidth: 3264,
-            minHeight: 2448,
+            minHeight: 3264,
+            minWidth: 2448,
             preferredAspect: 4 / 3,
           ) ??
           _pickResolution(
             sizes,
-            minWidth: 3000,
-            minHeight: 2000,
+            minHeight: 3000,
+            minWidth: 2000,
           ) ??
           sizes.first;
 
@@ -1400,14 +1377,14 @@ CameraResolutionInfo? _selectCaptureInfo({
       // 寻找 1080p 分辨率
       return _pickResolution(
             sizes,
-            minWidth: 1920,
-            minHeight: 1080,
+            minHeight: 1920,
+            minWidth: 1080,
             preferredAspect: 16 / 9,
           ) ??
           _pickResolution(
             sizes,
-            minWidth: 1800,
-            minHeight: 1000,
+            minHeight: 1800,
+            minWidth: 1000,
           ) ??
           sizes.first;
 
@@ -1415,14 +1392,14 @@ CameraResolutionInfo? _selectCaptureInfo({
       // 寻找 720p 分辨率
       return _pickResolution(
             sizes,
-            minWidth: 1280,
-            minHeight: 720,
+            minHeight: 1280,
+            minWidth: 720,
             preferredAspect: 16 / 9,
           ) ??
           _pickResolution(
             sizes,
-            minWidth: 1200,
-            minHeight: 700,
+            minHeight: 1200,
+            minWidth: 700,
           ) ??
           sizes.first;
 
@@ -1430,14 +1407,14 @@ CameraResolutionInfo? _selectCaptureInfo({
       // 寻找 480p 分辨率
       return _pickResolution(
             sizes,
-            minWidth: 720,
-            minHeight: 480,
+            minHeight: 720,
+            minWidth: 480,
             preferredAspect: 3 / 2,
           ) ??
           _pickResolution(
             sizes,
-            minWidth: 640,
-            minHeight: 480,
+            minHeight: 640,
+            minWidth: 480,
           ) ??
           sizes.first;
 
