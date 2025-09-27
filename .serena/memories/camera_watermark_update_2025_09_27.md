@@ -1,0 +1,1 @@
+2025-09-27：相机预览与导出统一按平台画幅归一（移动端 1080×1920、Web 1920×1080），以 `_normalizeViewportSize` 驱动 `AspectRatio` 布局；WatermarkProfilesController 画布同步支持宽高互换，导出时使用真实捕获尺寸。水印编辑器重写手势，支持单指拖动、双指缩放 + 旋转，旋转/删除把手命中区扩大；修复 Profile 编辑器 TextEditingController 的释放序。收起键盘时，会报错，height is out of range.

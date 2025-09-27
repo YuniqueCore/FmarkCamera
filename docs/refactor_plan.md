@@ -13,14 +13,12 @@
   - `WatermarkContextController`、`WatermarkRenderer`、`WatermarkExporter` 提供上下文、渲染与导出能力。
   - 新增 `CameraCapabilitiesService`（Android）缓存真实拍照/录像分辨率，供相机与设置页使用。
 - **presentation**：`camera/`、`profiles/`、`gallery/` 模块化组织；`watermark_canvas.dart` / `watermark_element_widget.dart` 负责水印渲染与编辑交互。
-## 当前进展（截至 2025-09-26）
-- ✅ Android 真机可完成拍照/录像，Gallery CRUD 与导出流程可用。
-- ✅ 水印渲染与导出使用统一画布，图片导出比例与预览一致。
-- ✅ 摄像头切换流程已重构：初始化串行化、失败回退、预览画幅按捕获分辨率 letterbox 显示。
-- ✅ 新增 Android 平台通道（`MainActivity`）枚举可用分辨率，并在相机初始化时根据 `ResolutionPreset` 选择最接近的实际尺寸。
-- ⏳ 设置页仍基于枚举 `ResolutionPreset`；需接入 `CameraCapabilitiesService` 暴露的真实选项。
-- ⏳ Web 端仍存在拍照黑屏、导出受限等问题，尚未开始处理。
-- ⏳ 水印编辑器仍有多指缩放旋转精度、层级侧边栏等交互优化待办。
+## 当前进展（更新：2025-09-27）
+- ✅ 相机预览按平台自适配：移动端默认 1080×1920，Web 默认 1920×1080，预览不再横向拉伸；捕获尺寸、Profile 画布、导出水印保持一致。
+- ✅ 水印编辑器交互重构：单指拖动、双指缩放旋转、显式旋转/删除把手已可点击；临时控制器生命周期修复。
+- ✅ 设置页保留真实分辨率选择逻辑（待联动能力服务扩展更多字段）。
+- ⏳ Web 端拍摄/导出链路仍需进一步验证与 wasm 性能评估。
+- ⏳ Gallery 所见即所得缓存与 Profile 层级侧栏优化仍在规划中。
 ## 近期主要改动
 1. **相机能力接入**：
    - `android/app/src/main/kotlin/com/example/fmark_camera/MainActivity.kt` 增加 `getCameraCapabilities` MethodChannel，返回每个 cameraId 的照片/视频输出尺寸。
@@ -36,7 +34,6 @@
 1. **分辨率设置 UI**
    - 将 `SettingsScreen` 的下拉项替换为基于能力服务的真实列表，展示像素与纵横比；持久化时需要区分照片/视频独立选择。
    - 在 Profile 编辑/画布同步中记录当前配置，防止跨模式画幅错位。
-   - setting 中的分辨率选择 UI 存在叠加的问题，需要修复
    - 同时当前选择的分辨率与实际捕获分辨率不一致，比如选择的 4096*2304, 但是实际导出时为:2448*3264. 需要修复
 2. **水印编辑器体验**
    - 精确控制：为旋转/缩放提供显式控制柄，优化双指手势抖动问题。当前无法实现双指缩放，以及拖动旋转控制柄进行旋转，, 需要修复
