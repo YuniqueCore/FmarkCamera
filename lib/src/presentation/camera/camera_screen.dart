@@ -250,10 +250,15 @@ class _CameraScreenState extends State<CameraScreen>
       await _applyFlashMode(controller);
 
       final previewSize = controller.value.previewSize;
-      final baseInfo = captureInfo ?? preferredSelection;
-      final canvasSize = baseInfo == null
+      final matchedActual = _matchCaptureSize(
+        capabilities: capabilities,
+        mode: _currentMode,
+        previewSize: previewSize,
+      );
+      final resolvedCapture = matchedActual ?? captureInfo ?? preferredSelection;
+      final canvasSize = resolvedCapture == null
           ? _canvasSizeFromPreview(previewSize)
-          : _canvasSizeFromCaptureInfo(baseInfo);
+          : _canvasSizeFromCaptureInfo(resolvedCapture);
 
       await _profilesController.ensureCanvasSize(
         canvasSize,
@@ -269,7 +274,7 @@ class _CameraScreenState extends State<CameraScreen>
             height: previewSize.height,
           ),
           cameraId: camera.name,
-          capture: captureInfo,
+          capture: resolvedCapture,
           lensFacing: capabilities?.lensFacing,
         );
       }
@@ -284,7 +289,7 @@ class _CameraScreenState extends State<CameraScreen>
         _lastSyncedCanvasSize = null;
         _focusIndicatorNormalized = null;
         _currentPreviewSize = canvasSize.toSize();
-        _currentCaptureInfo = captureInfo ?? preferredSelection;
+        _currentCaptureInfo = resolvedCapture?.toPortrait();
       });
 
       if (_currentMode == CameraCaptureMode.photo) {
@@ -518,9 +523,11 @@ class _CameraScreenState extends State<CameraScreen>
 
   WatermarkCanvasSize _canvasSizeFromPreview(Size? previewSize) {
     final size = previewSize ?? _fallbackCanvasSize().toSize();
+    final portraitWidth = math.min(size.width, size.height);
+    final portraitHeight = math.max(size.width, size.height);
     return WatermarkCanvasSize(
-      width: size.width,
-      height: size.height,
+      width: portraitWidth,
+      height: portraitHeight,
       pixelRatio: _devicePixelRatio(),
     );
   }
@@ -528,9 +535,10 @@ class _CameraScreenState extends State<CameraScreen>
   WatermarkCanvasSize _canvasSizeFromCaptureInfo(
     CameraResolutionInfo info,
   ) {
+    final portrait = info.toPortrait();
     return WatermarkCanvasSize(
-      width: info.width,
-      height: info.height,
+      width: portrait.width,
+      height: portrait.height,
       pixelRatio: _devicePixelRatio(),
     );
   }
@@ -1048,6 +1056,11 @@ class _CameraScreenState extends State<CameraScreen>
     try {
       final bytes = capturedBytes ?? await file.readAsBytes();
       captureSize = await _decodeImageSize(bytes);
+      if (captureSize != null && captureSize.width > 0 && captureSize.height > 0) {
+        if (captureSize.width > captureSize.height) {
+          captureSize = Size(captureSize.height, captureSize.width);
+        }
+      }
     } catch (_) {
       captureSize = null;
     }
@@ -1233,14 +1246,18 @@ class _CameraScreenState extends State<CameraScreen>
     String? thumbnailData,
   }) async {
     final contextData = _contextController.context;
-    final sizeFromController = captureSize ?? _currentCaptureInfo?.toSize();
-    final WatermarkCanvasSize baseCanvas;
-    if (sizeFromController != null &&
-        sizeFromController.width > 0 &&
-        sizeFromController.height > 0) {
+    final Size? normalizedCapture = captureSize ?? _currentCaptureInfo?.toSize();
+
+    WatermarkCanvasSize baseCanvas;
+    if (normalizedCapture != null &&
+        normalizedCapture.width > 0 &&
+        normalizedCapture.height > 0) {
+      final portraitWidth = math.min(normalizedCapture.width, normalizedCapture.height);
+      final portraitHeight =
+          math.max(normalizedCapture.width, normalizedCapture.height);
       baseCanvas = WatermarkCanvasSize(
-        width: sizeFromController.width,
-        height: sizeFromController.height,
+        width: portraitWidth,
+        height: portraitHeight,
         pixelRatio: _devicePixelRatio(),
       );
     } else if (previewSize != null) {
@@ -1288,6 +1305,39 @@ class _CameraScreenState extends State<CameraScreen>
     );
     await _projectsController.addProject(project);
   }
+}
+
+CameraResolutionInfo? _matchCaptureSize({
+  required CameraDeviceCapabilities? capabilities,
+  required CameraCaptureMode mode,
+  required Size? previewSize,
+}) {
+  if (capabilities == null || previewSize == null) {
+    return null;
+  }
+  final sizes = mode == CameraCaptureMode.photo
+      ? capabilities.photoSizes
+      : capabilities.videoSizes;
+  if (sizes.isEmpty) {
+    return null;
+  }
+  final target = CameraResolutionInfo(
+    width: previewSize.width,
+    height: previewSize.height,
+  ).toPortrait();
+  CameraResolutionInfo? best;
+  double bestScore = double.infinity;
+  for (final candidate in sizes) {
+    final canonical = candidate.toPortrait();
+    final aspectDiff = (canonical.aspectRatio - target.aspectRatio).abs();
+    final pixelDiff = (canonical.pixelCount - target.pixelCount).abs();
+    final score = aspectDiff * 5 + pixelDiff / 1000000;
+    if (score < bestScore) {
+      bestScore = score;
+      best = candidate;
+    }
+  }
+  return best;
 }
 
 CameraResolutionInfo? _selectCaptureInfo({

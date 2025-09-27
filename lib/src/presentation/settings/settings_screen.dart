@@ -230,51 +230,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
       leading: Icon(leadingIcon),
       title: Text(title),
       subtitle: Text(_formatOptionSubtitle(selected)),
-      trailing: DropdownButtonHideUnderline(
-        child: DropdownButton<_ResolutionOption>(
-          value: selected,
-          isExpanded: true,
-          items: options
-              .map(
-                (option) => DropdownMenuItem<_ResolutionOption>(
-                  value: option,
-                  child: Text(_formatOptionLabel(option)),
-                ),
-              )
-              .toList(),
-          onChanged: (option) async {
-            if (option == null) {
-              return;
-            }
-            final messenger = ScaffoldMessenger.of(context);
-            final devicePixelRatio = MediaQuery.of(context).devicePixelRatio;
-            await _settings.setResolutionSelection(
-              mode: mode,
-              selection: CameraResolutionSelection(
-                resolution: option.info,
-                preset: option.preset,
-                cameraId: option.cameraId,
-                lensFacing: option.lensFacing,
-              ),
-            );
-            await widget.bootstrapper.profilesController.ensureCanvasSize(
-              WatermarkCanvasSize(
-                width: option.info.width,
-                height: option.info.height,
-                pixelRatio: devicePixelRatio,
-              ),
-              force: true,
-              tolerance: 0.02,
-            );
-            if (!mounted) {
-              return;
-            }
-            messenger.showSnackBar(
-              SnackBar(content: Text('$title已更新为 ${_formatOptionLabel(option)}')),
-            );
-          },
-        ),
-      ),
+      trailing: const Icon(Icons.chevron_right),
+      onTap: () async {
+        final messenger = ScaffoldMessenger.of(context);
+        final devicePixelRatio = MediaQuery.of(context).devicePixelRatio;
+        final picked = await _showResolutionPicker(
+          context: context,
+          title: title,
+          options: options,
+          initial: selected,
+        );
+        if (picked == null) {
+          return;
+        }
+        if (!mounted) {
+          return;
+        }
+        await _applyResolutionSelection(
+          mode: mode,
+          option: picked,
+          messenger: messenger,
+          devicePixelRatio: devicePixelRatio,
+          confirmationLabel: title,
+        );
+      },
     );
   }
 
@@ -323,11 +302,120 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  Future<void> _applyResolutionSelection({
+    required CameraCaptureMode mode,
+    required _ResolutionOption option,
+    required ScaffoldMessengerState messenger,
+    required double devicePixelRatio,
+    required String confirmationLabel,
+  }) async {
+    await _settings.setResolutionSelection(
+      mode: mode,
+      selection: CameraResolutionSelection(
+        resolution: option.canonical,
+        preset: option.preset,
+        cameraId: option.cameraId,
+        lensFacing: option.lensFacing,
+      ),
+    );
+    if (!mounted) {
+      return;
+    }
+    await widget.bootstrapper.profilesController.ensureCanvasSize(
+      WatermarkCanvasSize(
+        width: option.canonical.width,
+        height: option.canonical.height,
+        pixelRatio: devicePixelRatio,
+      ),
+      force: true,
+      tolerance: 0.02,
+    );
+    if (!mounted) {
+      return;
+    }
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text('$confirmationLabel已更新为 ${_formatOptionLabel(option)}'),
+      ),
+    );
+  }
+
+  Future<_ResolutionOption?> _showResolutionPicker({
+    required BuildContext context,
+    required String title,
+    required List<_ResolutionOption> options,
+    required _ResolutionOption initial,
+  }) async {
+    if (options.isEmpty) {
+      return null;
+    }
+    return showModalBottomSheet<_ResolutionOption>(
+      context: context,
+      builder: (ctx) {
+        var selected = initial;
+        return StatefulBuilder(
+          builder: (context, setState) {
+            final listHeight = math.min(420.0, 72.0 * options.length + 96);
+            return SafeArea(
+              child: SizedBox(
+                height: listHeight,
+                child: Column(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
+                      child: Text(
+                        '选择$title',
+                        style: Theme.of(context)
+                            .textTheme
+                            .titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                    const Divider(height: 1),
+                    Expanded(
+                      child: ListView.builder(
+                        itemCount: options.length,
+                        itemBuilder: (context, index) {
+                          final option = options[index];
+                          final isSelected = option == selected;
+                          return ListTile(
+                            leading: Icon(
+                              isSelected
+                                  ? Icons.radio_button_checked
+                                  : Icons.radio_button_off,
+                              color: isSelected
+                                  ? Theme.of(context).colorScheme.primary
+                                  : Colors.white70,
+                            ),
+                            title: Text(_formatOptionLabel(option)),
+                            subtitle: Text(_presetDescription(option)),
+                            onTap: () {
+                              setState(() => selected = option);
+                              Navigator.of(context).pop(option);
+                            },
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   List<_ResolutionOption> _buildOptions(
     List<CameraDeviceCapabilities> capabilities,
     CameraCaptureMode mode,
   ) {
     final options = <_ResolutionOption>[];
+    final seen = <String>{};
     for (final device in capabilities) {
       final sizes =
           mode == CameraCaptureMode.photo ? device.photoSizes : device.videoSizes;
@@ -340,6 +428,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
         );
       for (var index = 0; index < sorted.length; index++) {
         final info = sorted[index];
+        final displayInfo = info.toPortrait();
+        final key = '${device.cameraId}-${displayInfo.width.toInt()}x${displayInfo.height.toInt()}';
+        if (!seen.add(key)) {
+          continue;
+        }
         final preset = index == 0
             ? ResolutionPreset.max
             : _presetForResolution(info);
@@ -358,8 +451,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   String _formatOptionLabel(_ResolutionOption option) {
-    final resolution = option.info;
-    final aspect = _formatAspectRatio(resolution.aspectRatio);
+    final resolution = option.canonical;
+    final aspect = _formatAspectRatio(resolution);
     final lensLabel = _lensFacingLabel(option.lensFacing);
     final segments = <String>[
       '${resolution.width.toStringAsFixed(0)}x${resolution.height.toStringAsFixed(0)}',
@@ -374,6 +467,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return '$presetLabel · ${_formatOptionLabel(option)}';
   }
 
+  String _presetDescription(_ResolutionOption option) {
+    final lens = _lensFacingLabel(option.lensFacing);
+    final preset = resolutionPresetLabel(option.preset);
+    return lens == null ? preset : '$preset · $lens';
+  }
+
   String _resolutionSubtitle(
     ResolutionPreset preset,
     CameraResolutionInfo? info,
@@ -382,7 +481,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (info == null || !info.isValid) {
       return label;
     }
-    return '$label · ${info.width.toStringAsFixed(0)}x${info.height.toStringAsFixed(0)}';
+    final canonical = info.toPortrait();
+    return '$label · ${canonical.width.toStringAsFixed(0)}x${canonical.height.toStringAsFixed(0)}';
   }
 
   ResolutionPreset _presetForResolution(CameraResolutionInfo info) {
@@ -403,7 +503,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return ResolutionPreset.low;
   }
 
-  String? _formatAspectRatio(double ratio) {
+  String? _formatAspectRatio(CameraResolutionInfo info) {
+    final longer = math.max(info.width, info.height);
+    final shorter = math.min(info.width, info.height);
+    if (longer <= 0 || shorter <= 0) {
+      return null;
+    }
+    final ratio = longer / shorter;
     const known = <String, double>{
       '16:9': 16 / 9,
       '4:3': 4 / 3,
@@ -411,11 +517,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
       '1:1': 1,
     };
     for (final entry in known.entries) {
-      if ((ratio - entry.value).abs() < 0.02) {
+      if ((ratio - entry.value).abs() < 0.05) {
         return entry.key;
       }
     }
-    return ratio > 0 ? ratio.toStringAsFixed(2) : null;
+    return ratio.toStringAsFixed(2);
   }
 
   String? _lensFacingLabel(String? lensFacing) {
@@ -491,10 +597,12 @@ class _ResolutionOption {
   final String cameraId;
   final String? lensFacing;
 
+  CameraResolutionInfo get canonical => info.toPortrait();
+
   bool matches(CameraResolutionSelection selection) {
     final sameCamera = selection.cameraId == null ||
         selection.cameraId == cameraId;
     return sameCamera &&
-        selection.resolution.approximatelyEquals(info, tolerance: 2.0);
+        selection.resolution.approximatelyEquals(canonical, tolerance: 2.0);
   }
 }

@@ -20,8 +20,28 @@ class CameraResolutionInfo {
     CameraResolutionInfo other, {
     double tolerance = 1.0,
   }) {
-    return (width - other.width).abs() <= tolerance &&
+    final directMatch = (width - other.width).abs() <= tolerance &&
         (height - other.height).abs() <= tolerance;
+    if (directMatch) {
+      return true;
+    }
+    final swappedMatch = (width - other.height).abs() <= tolerance &&
+        (height - other.width).abs() <= tolerance;
+    return swappedMatch;
+  }
+
+  CameraResolutionInfo toPortrait() {
+    if (height >= width) {
+      return this;
+    }
+    return CameraResolutionInfo(width: height, height: width);
+  }
+
+  CameraResolutionInfo toLandscape() {
+    if (width >= height) {
+      return this;
+    }
+    return CameraResolutionInfo(width: height, height: width);
   }
 
   Map<String, dynamic> toJson() => <String, dynamic>{
