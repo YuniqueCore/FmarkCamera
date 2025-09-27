@@ -232,21 +232,6 @@ class _CameraScreenState extends State<CameraScreen>
         enableAudio: _currentMode == CameraCaptureMode.video,
       );
       await controller.initialize();
-
-      // 确保分辨率设置正确应用
-      if (captureInfo != null) {
-        try {
-          // 验证控制器是否正确应用了分辨率设置
-          final controllerPreviewSize = controller.value.previewSize;
-          if (controllerPreviewSize != null) {
-            debugPrint('Controller preview size: ${controllerPreviewSize.width}x${controllerPreviewSize.height}');
-            debugPrint('Selected capture info: ${captureInfo.width}x${captureInfo.height}');
-          }
-        } catch (e) {
-          debugPrint('Error checking controller resolution: $e');
-        }
-      }
-
       await _applyFlashMode(controller);
 
       final previewSize = controller.value.previewSize;
@@ -255,7 +240,8 @@ class _CameraScreenState extends State<CameraScreen>
         mode: _currentMode,
         previewSize: previewSize,
       );
-      final resolvedCapture = matchedActual ?? captureInfo ?? preferredSelection;
+      final resolvedCapture =
+          matchedActual ?? captureInfo ?? preferredSelection;
       final canvasSize = resolvedCapture == null
           ? _canvasSizeFromPreview(previewSize)
           : _canvasSizeFromCaptureInfo(resolvedCapture);
@@ -289,7 +275,7 @@ class _CameraScreenState extends State<CameraScreen>
         _lastSyncedCanvasSize = null;
         _focusIndicatorNormalized = null;
         _currentPreviewSize = canvasSize.toSize();
-        _currentCaptureInfo = resolvedCapture?.toPortrait();
+        _currentCaptureInfo = resolvedCapture;
       });
 
       if (_currentMode == CameraCaptureMode.photo) {
@@ -523,11 +509,9 @@ class _CameraScreenState extends State<CameraScreen>
 
   WatermarkCanvasSize _canvasSizeFromPreview(Size? previewSize) {
     final size = previewSize ?? _fallbackCanvasSize().toSize();
-    final portraitWidth = math.min(size.width, size.height);
-    final portraitHeight = math.max(size.width, size.height);
     return WatermarkCanvasSize(
-      width: portraitWidth,
-      height: portraitHeight,
+      width: size.width,
+      height: size.height,
       pixelRatio: _devicePixelRatio(),
     );
   }
@@ -535,10 +519,9 @@ class _CameraScreenState extends State<CameraScreen>
   WatermarkCanvasSize _canvasSizeFromCaptureInfo(
     CameraResolutionInfo info,
   ) {
-    final portrait = info.toPortrait();
     return WatermarkCanvasSize(
-      width: portrait.width,
-      height: portrait.height,
+      width: info.width,
+      height: info.height,
       pixelRatio: _devicePixelRatio(),
     );
   }
@@ -676,7 +659,7 @@ class _CameraScreenState extends State<CameraScreen>
               height: displayHeight,
               child: ClipRect(
                 child: FittedBox(
-                  fit: BoxFit.cover,
+                  fit: BoxFit.contain,
                   child: SizedBox(
                     width: previewSourceSize.width,
                     height: previewSourceSize.height,
@@ -875,14 +858,25 @@ class _CameraScreenState extends State<CameraScreen>
     }
     final candidateAspect = candidate.width / candidate.height;
     final fallbackAspect = fallback.width / fallback.height;
-    if ((candidateAspect - fallbackAspect).abs() > 0.02) {
+    final aspectDiff = (candidateAspect - fallbackAspect).abs();
+    if (aspectDiff <= 0.02) {
+      return candidate.copyWith(pixelRatio: pixelRatio);
+    }
+    final swappedAspect = candidate.height <= 0
+        ? candidateAspect
+        : candidate.height / candidate.width;
+    if ((swappedAspect - fallbackAspect).abs() <= 0.02) {
       return WatermarkCanvasSize(
-        width: fallback.width,
-        height: fallback.height,
+        width: candidate.height,
+        height: candidate.width,
         pixelRatio: pixelRatio,
       );
     }
-    return candidate.copyWith(pixelRatio: pixelRatio);
+    return WatermarkCanvasSize(
+      width: fallback.width,
+      height: fallback.height,
+      pixelRatio: pixelRatio,
+    );
   }
 
   Widget _buildBottomBar(WatermarkProfile? activeProfile) {
@@ -891,12 +885,11 @@ class _CameraScreenState extends State<CameraScreen>
     final activeId = activeProfile?.id;
     final captureInfo = _currentCaptureInfo;
     final previewSize = _currentPreviewSize;
-    final modeLabel =
-        _currentMode == CameraCaptureMode.photo ? '照片' : '视频';
+    final modeLabel = _currentMode == CameraCaptureMode.photo ? '照片' : '视频';
     final infoText = captureInfo != null
-        ? '当前捕获: ${captureInfo.width.toInt()}x${captureInfo.height.toInt()} ($modeLabel)'
+        ? '当前捕获：${captureInfo.width.toInt()}x${captureInfo.height.toInt()} ($modeLabel)'
         : previewSize != null
-            ? '当前预览: ${previewSize.width.toInt()}x${previewSize.height.toInt()} (${_activePreset.name})'
+            ? '当前预览：${previewSize.width.toInt()}x${previewSize.height.toInt()} (${_activePreset.name})'
             : null;
 
     return SafeArea(
@@ -1056,7 +1049,9 @@ class _CameraScreenState extends State<CameraScreen>
     try {
       final bytes = capturedBytes ?? await file.readAsBytes();
       captureSize = await _decodeImageSize(bytes);
-      if (captureSize != null && captureSize.width > 0 && captureSize.height > 0) {
+      if (captureSize != null &&
+          captureSize.width > 0 &&
+          captureSize.height > 0) {
         if (captureSize.width > captureSize.height) {
           captureSize = Size(captureSize.height, captureSize.width);
         }
@@ -1095,7 +1090,9 @@ class _CameraScreenState extends State<CameraScreen>
         setState(() => _isRecording = false);
 
         // 验证视频文件
-        if (!kIsWeb && await File(file.path).exists() && await File(file.path).length() > 0) {
+        if (!kIsWeb &&
+            await File(file.path).exists() &&
+            await File(file.path).length() > 0) {
           final thumbnailData = await _generateVideoThumbnail(file.path);
 
           await _storeCapture(
@@ -1150,7 +1147,7 @@ class _CameraScreenState extends State<CameraScreen>
         return;
       }
 
-      // 检查麦克风权限（Android需要）
+      // 检查麦克风权限（Android 需要）
       if (!kIsWeb) {
         try {
           final micStatus = await Permission.microphone.request();
@@ -1174,7 +1171,8 @@ class _CameraScreenState extends State<CameraScreen>
         try {
           await controller.prepareForVideoRecording();
         } catch (error) {
-          debugPrint('prepareForVideoRecording failed, continuing anyway: $error');
+          debugPrint(
+              'prepareForVideoRecording failed, continuing anyway: $error');
         }
 
         // 开始录制
@@ -1183,7 +1181,8 @@ class _CameraScreenState extends State<CameraScreen>
 
         debugPrint('Video recording started successfully');
       } on CameraException catch (error) {
-        debugPrint('Start video recording CameraException: ${error.code} - ${error.description}');
+        debugPrint(
+            'Start video recording CameraException: ${error.code} - ${error.description}');
         if (!mounted) {
           return;
         }
@@ -1246,18 +1245,16 @@ class _CameraScreenState extends State<CameraScreen>
     String? thumbnailData,
   }) async {
     final contextData = _contextController.context;
-    final Size? normalizedCapture = captureSize ?? _currentCaptureInfo?.toSize();
+    final Size? normalizedCapture =
+        captureSize ?? _currentCaptureInfo?.toSize();
 
     WatermarkCanvasSize baseCanvas;
     if (normalizedCapture != null &&
         normalizedCapture.width > 0 &&
         normalizedCapture.height > 0) {
-      final portraitWidth = math.min(normalizedCapture.width, normalizedCapture.height);
-      final portraitHeight =
-          math.max(normalizedCapture.width, normalizedCapture.height);
       baseCanvas = WatermarkCanvasSize(
-        width: portraitWidth,
-        height: portraitHeight,
+        width: normalizedCapture.width,
+        height: normalizedCapture.height,
         pixelRatio: _devicePixelRatio(),
       );
     } else if (previewSize != null) {
@@ -1265,7 +1262,26 @@ class _CameraScreenState extends State<CameraScreen>
     } else {
       baseCanvas = _fallbackCanvasSize();
     }
-    final canvasSize = profile.canvasSize ?? baseCanvas;
+    final WatermarkCanvasSize canvasSize;
+    final candidate = profile.canvasSize;
+    if (candidate == null || candidate.width <= 0 || candidate.height <= 0) {
+      canvasSize = baseCanvas;
+    } else {
+      final aspectDiff =
+          (candidate.width / candidate.height) - (baseCanvas.width / baseCanvas.height);
+      if (aspectDiff.abs() <= 0.02) {
+        canvasSize = candidate;
+      } else {
+        final swappedCandidate = WatermarkCanvasSize(
+          width: candidate.height,
+          height: candidate.width,
+          pixelRatio: candidate.pixelRatio,
+        );
+        final swappedDiff = (swappedCandidate.width / swappedCandidate.height) -
+            (baseCanvas.width / baseCanvas.height);
+        canvasSize = swappedDiff.abs() <= 0.02 ? swappedCandidate : baseCanvas;
+      }
+    }
     String? overlayPath;
     String? overlayData;
     String? resolvedThumbnail = thumbnailData;
@@ -1360,7 +1376,7 @@ CameraResolutionInfo? _selectCaptureInfo({
       return sizes.first; // 返回最高分辨率
 
     case ResolutionPreset.ultraHigh:
-      // 寻找4K分辨率（3840x2160或3264x2448）
+      // 寻找 4K 分辨率（3840x2160 或 3264x2448）
       return _pickResolution(
             sizes,
             minWidth: 3840,
@@ -1381,7 +1397,7 @@ CameraResolutionInfo? _selectCaptureInfo({
           sizes.first;
 
     case ResolutionPreset.veryHigh:
-      // 寻找1080p分辨率
+      // 寻找 1080p 分辨率
       return _pickResolution(
             sizes,
             minWidth: 1920,
@@ -1396,7 +1412,7 @@ CameraResolutionInfo? _selectCaptureInfo({
           sizes.first;
 
     case ResolutionPreset.high:
-      // 寻找720p分辨率
+      // 寻找 720p 分辨率
       return _pickResolution(
             sizes,
             minWidth: 1280,
@@ -1411,7 +1427,7 @@ CameraResolutionInfo? _selectCaptureInfo({
           sizes.first;
 
     case ResolutionPreset.medium:
-      // 寻找480p分辨率
+      // 寻找 480p 分辨率
       return _pickResolution(
             sizes,
             minWidth: 720,

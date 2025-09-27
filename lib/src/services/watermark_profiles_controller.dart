@@ -103,7 +103,11 @@ class WatermarkProfilesController extends ChangeNotifier {
   }) {
     double scale(double value) => value.abs().clamp(1, double.infinity);
     bool close(double x, double y) => (x - y).abs() <= tolerance * scale(y);
-    return close(a.width, b.width) && close(a.height, b.height);
+    final directMatch = close(a.width, b.width) && close(a.height, b.height);
+    if (directMatch) {
+      return true;
+    }
+    return close(a.width, b.height) && close(a.height, b.width);
   }
 
   Future<WatermarkProfile> createProfile({

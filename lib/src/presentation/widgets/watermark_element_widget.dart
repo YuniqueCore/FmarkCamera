@@ -528,6 +528,7 @@ class _RotationHandle extends StatelessWidget {
   Widget build(BuildContext context) {
     final enabled = !isLocked;
     return GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onPanStart: enabled ? onPanStart : null,
       onPanUpdate: enabled ? onPanUpdate : null,
       onPanEnd: enabled ? onPanEnd : null,
@@ -560,6 +561,7 @@ class _DeleteHandle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onTap: onPressed,
       child: Container(
         width: 28,

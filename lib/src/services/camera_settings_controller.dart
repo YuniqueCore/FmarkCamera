@@ -121,33 +121,30 @@ class CameraSettingsController extends ChangeNotifier {
     required CameraCaptureMode mode,
     required CameraResolutionSelection selection,
   }) async {
-    final normalized = selection.copyWith(
-      resolution: selection.resolution.toPortrait(),
-    );
     final current = selectionForMode(mode);
     if (current != null &&
-        current.preset == normalized.preset &&
-        current.cameraId == normalized.cameraId &&
-        current.lensFacing == normalized.lensFacing &&
-        current.resolution.approximatelyEquals(normalized.resolution)) {
+        current.preset == selection.preset &&
+        current.cameraId == selection.cameraId &&
+        current.lensFacing == selection.lensFacing &&
+        current.resolution.approximatelyEquals(selection.resolution)) {
       return;
     }
 
     if (mode == CameraCaptureMode.photo) {
-      _photoSelection = normalized;
-      _photoPreset = normalized.preset;
-      await _preferences.setString(_photoPresetKey, normalized.preset.name);
+      _photoSelection = selection;
+      _photoPreset = selection.preset;
+      await _preferences.setString(_photoPresetKey, selection.preset.name);
       await _preferences.setString(
         _photoSelectionKey,
-        jsonEncode(normalized.toJson()),
+        jsonEncode(selection.toJson()),
       );
     } else {
-      _videoSelection = normalized;
-      _videoPreset = normalized.preset;
-      await _preferences.setString(_videoPresetKey, normalized.preset.name);
+      _videoSelection = selection;
+      _videoPreset = selection.preset;
+      await _preferences.setString(_videoPresetKey, selection.preset.name);
       await _preferences.setString(
         _videoSelectionKey,
-        jsonEncode(normalized.toJson()),
+        jsonEncode(selection.toJson()),
       );
     }
     notifyListeners();
@@ -162,18 +159,17 @@ class CameraSettingsController extends ChangeNotifier {
     if (cameraId.isEmpty) {
       return;
     }
-    final normalized = resolution.toPortrait();
     final current = selectionForMode(mode);
     if (current != null &&
         current.cameraId == cameraId &&
         current.lensFacing == lensFacing &&
-        current.resolution.approximatelyEquals(normalized)) {
+        current.resolution.approximatelyEquals(resolution)) {
       return;
     }
     final preset = current?.preset ??
         (mode == CameraCaptureMode.video ? _videoPreset : _photoPreset);
     final updated = CameraResolutionSelection(
-      resolution: normalized,
+      resolution: resolution,
       preset: preset,
       cameraId: cameraId,
       lensFacing: lensFacing,
@@ -190,11 +186,10 @@ class CameraSettingsController extends ChangeNotifier {
     String? lensFacing,
   }) async {
     final key = _previewKey(mode, preset);
-    final normalizedInfo = info.toPortrait();
-    _previewInfo[key] = normalizedInfo;
-    await _preferences.setString(key, jsonEncode(normalizedInfo.toJson()));
+    _previewInfo[key] = info;
+    await _preferences.setString(key, jsonEncode(info.toJson()));
 
-    final resolved = (capture ?? info).toPortrait();
+    final resolved = capture ?? info;
     if (cameraId != null && cameraId.isNotEmpty && resolved.isValid) {
       await syncResolvedSelection(
         mode: mode,
