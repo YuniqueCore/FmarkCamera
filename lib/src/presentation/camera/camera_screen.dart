@@ -216,10 +216,13 @@ class _CameraScreenState extends State<CameraScreen>
       }
 
       final capabilities = await _capabilitiesService.findById(camera.name);
+      final preferredSelection =
+          _settingsController.resolutionForMode(_currentMode);
       final captureInfo = _selectCaptureInfo(
         capabilities: capabilities,
         preset: preset,
         mode: _currentMode,
+        preferred: preferredSelection,
       );
 
       final controller = CameraController(
@@ -231,9 +234,10 @@ class _CameraScreenState extends State<CameraScreen>
       await _applyFlashMode(controller);
 
       final previewSize = controller.value.previewSize;
-      final canvasSize = captureInfo == null
+      final baseInfo = captureInfo ?? preferredSelection;
+      final canvasSize = baseInfo == null
           ? _canvasSizeFromPreview(previewSize)
-          : _canvasSizeFromCaptureInfo(captureInfo);
+          : _canvasSizeFromCaptureInfo(baseInfo);
 
       await _profilesController.ensureCanvasSize(
         canvasSize,
@@ -242,12 +246,15 @@ class _CameraScreenState extends State<CameraScreen>
 
       if (previewSize != null) {
         await _settingsController.savePreviewInfo(
-          _currentMode,
-          preset,
-          CameraResolutionInfo(
+          mode: _currentMode,
+          preset: preset,
+          info: CameraResolutionInfo(
             width: previewSize.width,
             height: previewSize.height,
           ),
+          cameraId: camera.name,
+          capture: captureInfo,
+          lensFacing: capabilities?.lensFacing,
         );
       }
 
@@ -261,7 +268,7 @@ class _CameraScreenState extends State<CameraScreen>
         _lastSyncedCanvasSize = null;
         _focusIndicatorNormalized = null;
         _currentPreviewSize = canvasSize.toSize();
-        _currentCaptureInfo = captureInfo;
+        _currentCaptureInfo = captureInfo ?? preferredSelection;
       });
 
       if (_currentMode == CameraCaptureMode.photo) {
@@ -824,6 +831,16 @@ class _CameraScreenState extends State<CameraScreen>
     final controller = _cameraController;
     final profiles = _profilesController.profiles;
     final activeId = activeProfile?.id;
+    final captureInfo = _currentCaptureInfo;
+    final previewSize = _currentPreviewSize;
+    final modeLabel =
+        _currentMode == CameraCaptureMode.photo ? '照片' : '视频';
+    final infoText = captureInfo != null
+        ? '当前捕获: ${captureInfo.width.toInt()}x${captureInfo.height.toInt()} ($modeLabel)'
+        : previewSize != null
+            ? '当前预览: ${previewSize.width.toInt()}x${previewSize.height.toInt()} (${_activePreset.name})'
+            : null;
+
     return SafeArea(
       top: false,
       child: Container(
@@ -900,11 +917,11 @@ class _CameraScreenState extends State<CameraScreen>
                 ),
               ],
             ),
-            if (_currentPreviewSize != null)
+            if (infoText != null)
               Padding(
                 padding: const EdgeInsets.only(top: 8),
                 child: Text(
-                  '当前预览: ${_currentPreviewSize!.width.toInt()}x${_currentPreviewSize!.height.toInt()} (${_activePreset.name})',
+                  infoText,
                   style: const TextStyle(color: Colors.white54, fontSize: 12),
                 ),
               ),
@@ -1196,13 +1213,23 @@ CameraResolutionInfo? _selectCaptureInfo({
   required CameraDeviceCapabilities? capabilities,
   required ResolutionPreset preset,
   required CameraCaptureMode mode,
+  CameraResolutionInfo? preferred,
 }) {
   final sizes = mode == CameraCaptureMode.photo
       ? capabilities?.photoSizes
       : capabilities?.videoSizes;
   if (sizes == null || sizes.isEmpty) {
-    return null;
+    return preferred;
   }
+
+  if (preferred != null) {
+    for (final size in sizes) {
+      if (size.approximatelyEquals(preferred, tolerance: 2.0)) {
+        return size;
+      }
+    }
+  }
+
   switch (preset) {
     case ResolutionPreset.max:
       return sizes.first;

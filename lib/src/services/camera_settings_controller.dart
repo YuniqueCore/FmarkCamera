@@ -13,32 +13,63 @@ class CameraSettingsController extends ChangeNotifier {
   static const _photoPresetKey = 'camera.photo.preset';
   static const _videoPresetKey = 'camera.video.preset';
   static const _previewPrefix = 'camera.preview';
+  static const _photoSelectionKey = 'camera.photo.selection';
+  static const _videoSelectionKey = 'camera.video.selection';
 
   final SharedPreferences _preferences;
 
   ResolutionPreset _photoPreset = ResolutionPreset.high;
   ResolutionPreset _videoPreset = ResolutionPreset.high;
+  CameraResolutionSelection? _photoSelection;
+  CameraResolutionSelection? _videoSelection;
 
   final Map<String, CameraResolutionInfo> _previewInfo =
       <String, CameraResolutionInfo>{};
 
-  ResolutionPreset get photoPreset => _photoPreset;
-  ResolutionPreset get videoPreset => _videoPreset;
+  ResolutionPreset get photoPreset =>
+      _photoSelection?.preset ?? _photoPreset;
+  ResolutionPreset get videoPreset =>
+      _videoSelection?.preset ?? _videoPreset;
 
   ResolutionPreset presetForMode(CameraCaptureMode mode) {
+    final selection = selectionForMode(mode);
+    if (selection != null) {
+      return selection.preset;
+    }
     return mode == CameraCaptureMode.video ? _videoPreset : _photoPreset;
+  }
+
+  CameraResolutionSelection? selectionForMode(CameraCaptureMode mode) {
+    return mode == CameraCaptureMode.video ? _videoSelection : _photoSelection;
+  }
+
+  CameraResolutionInfo? resolutionForMode(CameraCaptureMode mode) {
+    return selectionForMode(mode)?.resolution;
   }
 
   CameraResolutionInfo? previewInfo(
     CameraCaptureMode mode,
     ResolutionPreset preset,
   ) {
+    final selection = selectionForMode(mode);
+    if (selection != null && selection.preset == preset) {
+      return selection.resolution;
+    }
     return _previewInfo[_previewKey(mode, preset)];
   }
 
   Future<void> load() async {
     _photoPreset = _readPreset(_photoPresetKey) ?? ResolutionPreset.high;
     _videoPreset = _readPreset(_videoPresetKey) ?? ResolutionPreset.high;
+    _photoSelection = _readSelection(_photoSelectionKey);
+    _videoSelection = _readSelection(_videoSelectionKey);
+
+    if (_photoSelection != null) {
+      _photoPreset = _photoSelection!.preset;
+    }
+    if (_videoSelection != null) {
+      _videoPreset = _videoSelection!.preset;
+    }
 
     for (final mode in CameraCaptureMode.values) {
       for (final preset in ResolutionPreset.values) {
@@ -59,31 +90,114 @@ class CameraSettingsController extends ChangeNotifier {
   }
 
   Future<void> setPhotoPreset(ResolutionPreset preset) async {
-    if (_photoPreset == preset) {
+    final selectionCleared = _photoSelection != null;
+    if (_photoPreset == preset && !selectionCleared) {
       return;
     }
     _photoPreset = preset;
+    if (selectionCleared) {
+      _photoSelection = null;
+      await _preferences.remove(_photoSelectionKey);
+    }
     await _preferences.setString(_photoPresetKey, preset.name);
     notifyListeners();
   }
 
   Future<void> setVideoPreset(ResolutionPreset preset) async {
-    if (_videoPreset == preset) {
+    final selectionCleared = _videoSelection != null;
+    if (_videoPreset == preset && !selectionCleared) {
       return;
     }
     _videoPreset = preset;
+    if (selectionCleared) {
+      _videoSelection = null;
+      await _preferences.remove(_videoSelectionKey);
+    }
     await _preferences.setString(_videoPresetKey, preset.name);
     notifyListeners();
   }
 
-  Future<void> savePreviewInfo(
-    CameraCaptureMode mode,
-    ResolutionPreset preset,
-    CameraResolutionInfo info,
-  ) async {
+  Future<void> setResolutionSelection({
+    required CameraCaptureMode mode,
+    required CameraResolutionSelection selection,
+  }) async {
+    final current = selectionForMode(mode);
+    if (current != null &&
+        current.preset == selection.preset &&
+        current.cameraId == selection.cameraId &&
+        current.lensFacing == selection.lensFacing &&
+        current.resolution.approximatelyEquals(selection.resolution)) {
+      return;
+    }
+
+    if (mode == CameraCaptureMode.photo) {
+      _photoSelection = selection;
+      _photoPreset = selection.preset;
+      await _preferences.setString(_photoPresetKey, selection.preset.name);
+      await _preferences.setString(
+        _photoSelectionKey,
+        jsonEncode(selection.toJson()),
+      );
+    } else {
+      _videoSelection = selection;
+      _videoPreset = selection.preset;
+      await _preferences.setString(_videoPresetKey, selection.preset.name);
+      await _preferences.setString(
+        _videoSelectionKey,
+        jsonEncode(selection.toJson()),
+      );
+    }
+    notifyListeners();
+  }
+
+  Future<void> syncResolvedSelection({
+    required CameraCaptureMode mode,
+    required String cameraId,
+    String? lensFacing,
+    required CameraResolutionInfo resolution,
+  }) async {
+    if (cameraId.isEmpty) {
+      return;
+    }
+    final current = selectionForMode(mode);
+    if (current != null &&
+        current.cameraId == cameraId &&
+        current.lensFacing == lensFacing &&
+        current.resolution.approximatelyEquals(resolution)) {
+      return;
+    }
+    final preset = current?.preset ??
+        (mode == CameraCaptureMode.video ? _videoPreset : _photoPreset);
+    final updated = CameraResolutionSelection(
+      resolution: resolution,
+      preset: preset,
+      cameraId: cameraId,
+      lensFacing: lensFacing,
+    );
+    await setResolutionSelection(mode: mode, selection: updated);
+  }
+
+  Future<void> savePreviewInfo({
+    required CameraCaptureMode mode,
+    required ResolutionPreset preset,
+    required CameraResolutionInfo info,
+    String? cameraId,
+    CameraResolutionInfo? capture,
+    String? lensFacing,
+  }) async {
     final key = _previewKey(mode, preset);
     _previewInfo[key] = info;
     await _preferences.setString(key, jsonEncode(info.toJson()));
+
+    final resolved = capture ?? info;
+    if (cameraId != null && cameraId.isNotEmpty && resolved.isValid) {
+      await syncResolvedSelection(
+        mode: mode,
+        cameraId: cameraId,
+        lensFacing: lensFacing,
+        resolution: resolved,
+      );
+    }
     notifyListeners();
   }
 
@@ -96,6 +210,20 @@ class CameraSettingsController extends ChangeNotifier {
       (preset) => preset.name == value,
       orElse: () => ResolutionPreset.high,
     );
+  }
+
+  CameraResolutionSelection? _readSelection(String key) {
+    final jsonString = _preferences.getString(key);
+    if (jsonString == null) {
+      return null;
+    }
+    try {
+      final map = jsonDecode(jsonString) as Map<String, dynamic>;
+      return CameraResolutionSelection.fromJson(map);
+    } catch (_) {
+      _preferences.remove(key);
+      return null;
+    }
   }
 
   String _previewKey(CameraCaptureMode mode, ResolutionPreset preset) {

@@ -3,7 +3,7 @@ package com.example.fmark_camera
 import android.hardware.camera2.CameraAccessException
 import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraManager
-import android.media.ImageFormat
+import android.graphics.ImageFormat
 import android.media.MediaRecorder
 import android.util.Log
 import android.util.Size

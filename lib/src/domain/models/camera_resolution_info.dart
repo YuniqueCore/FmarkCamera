@@ -16,6 +16,14 @@ class CameraResolutionInfo {
 
   Size toSize() => Size(width, height);
 
+  bool approximatelyEquals(
+    CameraResolutionInfo other, {
+    double tolerance = 1.0,
+  }) {
+    return (width - other.width).abs() <= tolerance &&
+        (height - other.height).abs() <= tolerance;
+  }
+
   Map<String, dynamic> toJson() => <String, dynamic>{
         'width': width,
         'height': height,
@@ -46,6 +54,63 @@ class CameraResolutionInfo {
   @override
   String toString() =>
       'CameraResolutionInfo(${width.toStringAsFixed(0)}x${height.toStringAsFixed(0)})';
+}
+
+class CameraResolutionSelection {
+  const CameraResolutionSelection({
+    required this.resolution,
+    required this.preset,
+    this.cameraId,
+    this.lensFacing,
+  });
+
+  final CameraResolutionInfo resolution;
+  final ResolutionPreset preset;
+  final String? cameraId;
+  final String? lensFacing;
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'resolution': resolution.toJson(),
+        'preset': preset.name,
+        'cameraId': cameraId,
+        'lensFacing': lensFacing,
+      };
+
+  factory CameraResolutionSelection.fromJson(Map<String, dynamic> json) {
+    final resolutionJson = json['resolution'];
+    if (resolutionJson is! Map<String, dynamic>) {
+      throw ArgumentError('resolution missing from selection json');
+    }
+    final presetName = json['preset'] as String?;
+    final preset = ResolutionPreset.values.firstWhere(
+      (item) => item.name == presetName,
+      orElse: () => ResolutionPreset.high,
+    );
+    return CameraResolutionSelection(
+      resolution: CameraResolutionInfo.fromJson(resolutionJson),
+      preset: preset,
+      cameraId: json['cameraId'] as String?,
+      lensFacing: json['lensFacing'] as String?,
+    );
+  }
+
+  CameraResolutionSelection copyWith({
+    CameraResolutionInfo? resolution,
+    ResolutionPreset? preset,
+    String? cameraId,
+    String? lensFacing,
+  }) {
+    return CameraResolutionSelection(
+      resolution: resolution ?? this.resolution,
+      preset: preset ?? this.preset,
+      cameraId: cameraId ?? this.cameraId,
+      lensFacing: lensFacing ?? this.lensFacing,
+    );
+  }
+
+  bool matchesResolution(CameraResolutionInfo info, {double tolerance = 1.0}) {
+    return resolution.approximatelyEquals(info, tolerance: tolerance);
+  }
 }
 
 String resolutionPresetLabel(ResolutionPreset preset) {
