@@ -26,6 +26,7 @@ dependencies:
   flutter_file_dialog: ^3.0.2
   gallery_saver_plus: ^3.2.9
   video_thumbnail: ^0.5.6
+  vector_math: ^2.1.4
 
   uuid: ^4.4.0
   collection: ^1.18.0

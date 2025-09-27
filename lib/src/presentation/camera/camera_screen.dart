@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io' show File;
-import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:camera/camera.dart';
@@ -495,8 +494,10 @@ class _CameraScreenState extends State<CameraScreen>
   }
 
   // Private helper methods
-  WatermarkCanvasSize _fallbackCanvasSize() =>
-      const WatermarkCanvasSize(width: 1080, height: 1920);
+  WatermarkCanvasSize _fallbackCanvasSize() {
+    final fallback = _platformViewportFallback();
+    return WatermarkCanvasSize(width: fallback.width, height: fallback.height);
+  }
 
   double _devicePixelRatio() {
     final dispatcher = WidgetsBinding.instance.platformDispatcher;
@@ -509,9 +510,10 @@ class _CameraScreenState extends State<CameraScreen>
 
   WatermarkCanvasSize _canvasSizeFromPreview(Size? previewSize) {
     final size = previewSize ?? _fallbackCanvasSize().toSize();
+    final normalized = _normalizeViewportSize(size);
     return WatermarkCanvasSize(
-      width: size.width,
-      height: size.height,
+      width: normalized.width,
+      height: normalized.height,
       pixelRatio: _devicePixelRatio(),
     );
   }
@@ -519,11 +521,23 @@ class _CameraScreenState extends State<CameraScreen>
   WatermarkCanvasSize _canvasSizeFromCaptureInfo(
     CameraResolutionInfo info,
   ) {
+    final normalized = _normalizeViewportSize(Size(info.width, info.height));
     return WatermarkCanvasSize(
-      width: info.width,
-      height: info.height,
+      width: normalized.width,
+      height: normalized.height,
       pixelRatio: _devicePixelRatio(),
     );
+  }
+
+  Size _platformViewportFallback() {
+    return kIsWeb ? const Size(1920, 1080) : const Size(1080, 1920);
+  }
+
+  Size _normalizeViewportSize(Size size) {
+    if (kIsWeb) {
+      return size.width >= size.height ? size : Size(size.height, size.width);
+    }
+    return size.height >= size.width ? size : Size(size.height, size.width);
   }
 
   IconData _flashIconForMode(FlashMode mode) {
@@ -605,118 +619,89 @@ class _CameraScreenState extends State<CameraScreen>
     required WatermarkContext contextData,
   }) {
     final mediaQuery = MediaQuery.of(context);
-    final orientation = mediaQuery.orientation;
     final previewSize = controller.value.previewSize;
-    final captureSize = _currentCaptureInfo != null
-        ? Size(_currentCaptureInfo!.width, _currentCaptureInfo!.height)
-        : previewSize;
-    final effectiveSize = _effectivePreviewSize(captureSize, orientation);
+    final captureInfo = _currentCaptureInfo;
+    final normalizedCapture = captureInfo == null
+        ? null
+        : _normalizeViewportSize(Size(captureInfo.width, captureInfo.height));
+    final normalizedPreview = previewSize == null
+        ? null
+        : _normalizeViewportSize(previewSize);
+    final targetSize = normalizedCapture ?? normalizedPreview ?? _platformViewportFallback();
     final pixelRatio = mediaQuery.devicePixelRatio;
     final canvasSize = _resolveCanvasSize(
       activeProfile,
-      effectiveSize,
+      targetSize,
       pixelRatio,
     );
 
-    final targetSize = effectiveSize;
-    final biggest = constraints.biggest;
-    final wrapperWidth =
-        biggest.width.isFinite ? biggest.width : targetSize.width;
-    final wrapperHeight =
-        biggest.height.isFinite ? biggest.height : targetSize.height;
-    final hasValidTarget = targetSize.width > 0 && targetSize.height > 0;
-    final scale = hasValidTarget
-        ? math.min(
-            wrapperWidth / targetSize.width,
-            wrapperHeight / targetSize.height,
-          )
-        : 1.0;
-    final displayWidth =
-        hasValidTarget ? targetSize.width * scale : wrapperWidth;
-    final displayHeight =
-        hasValidTarget ? targetSize.height * scale : wrapperHeight;
-    final horizontalPadding = (wrapperWidth - displayWidth) / 2;
-    final verticalPadding = (wrapperHeight - displayHeight) / 2;
-    final focusOffset = _focusIndicatorNormalized == null
-        ? null
-        : Offset(
-            horizontalPadding + _focusIndicatorNormalized!.dx * displayWidth,
-            verticalPadding + _focusIndicatorNormalized!.dy * displayHeight,
-          );
-
-    final previewSourceSize = previewSize ?? targetSize;
-
     return Center(
-      child: SizedBox(
-        width: wrapperWidth,
-        height: wrapperHeight,
-        child: Stack(
-          children: [
-            Positioned(
-              left: horizontalPadding,
-              top: verticalPadding,
-              width: displayWidth,
-              height: displayHeight,
-              child: ClipRect(
-                child: FittedBox(
-                  fit: BoxFit.contain,
-                  child: SizedBox(
-                    width: previewSourceSize.width,
-                    height: previewSourceSize.height,
-                    child: CameraPreview(controller),
-                  ),
-                ),
-              ),
-            ),
-            if (activeProfile != null)
-              Positioned(
-                left: horizontalPadding,
-                top: verticalPadding,
-                width: displayWidth,
-                height: displayHeight,
-                child: IgnorePointer(
-                  ignoring: true,
-                  child: WatermarkCanvasView(
-                    elements: activeProfile.elements,
-                    contextData: contextData,
-                    canvasSize: canvasSize,
-                  ),
-                ),
-              ),
-            Positioned(
-              left: horizontalPadding,
-              top: verticalPadding,
-              width: displayWidth,
-              height: displayHeight,
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTapDown: (details) => _handlePreviewTap(
-                  position: details.localPosition,
-                  displaySize: Size(displayWidth, displayHeight),
-                ),
-              ),
-            ),
-            if (focusOffset != null)
-              Positioned(
-                left: focusOffset.dx - 24,
-                top: focusOffset.dy - 24,
-                child: AnimatedOpacity(
-                  duration: const Duration(milliseconds: 120),
-                  opacity: _focusIndicatorNormalized == null ? 0 : 1,
-                  child: Container(
-                    width: 48,
-                    height: 48,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(color: Colors.white70, width: 2),
-                      boxShadow: const [
-                        BoxShadow(color: Colors.black54, blurRadius: 6),
-                      ],
+      child: AspectRatio(
+        aspectRatio: targetSize.width / targetSize.height,
+        child: LayoutBuilder(
+          builder: (context, viewport) {
+            final viewportSize = Size(viewport.maxWidth, viewport.maxHeight);
+            final focusOffset = _focusIndicatorNormalized == null
+                ? null
+                : Offset(
+                    _focusIndicatorNormalized!.dx * viewportSize.width,
+                    _focusIndicatorNormalized!.dy * viewportSize.height,
+                  );
+            final previewSourceSize = normalizedPreview ?? targetSize;
+            return Stack(
+              fit: StackFit.expand,
+              children: [
+                ClipRect(
+                  child: FittedBox(
+                    fit: BoxFit.cover,
+                    child: SizedBox(
+                      width: previewSourceSize.width,
+                      height: previewSourceSize.height,
+                      child: CameraPreview(controller),
                     ),
                   ),
                 ),
-              ),
-          ],
+                if (activeProfile != null)
+                  IgnorePointer(
+                    ignoring: true,
+                    child: WatermarkCanvasView(
+                      elements: activeProfile.elements,
+                      contextData: contextData,
+                      canvasSize: canvasSize,
+                    ),
+                  ),
+                Positioned.fill(
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTapDown: (details) => _handlePreviewTap(
+                      position: details.localPosition,
+                      displaySize: viewportSize,
+                    ),
+                  ),
+                ),
+                if (focusOffset != null)
+                  Positioned(
+                    left: focusOffset.dx - 24,
+                    top: focusOffset.dy - 24,
+                    child: AnimatedOpacity(
+                      duration: const Duration(milliseconds: 120),
+                      opacity: _focusIndicatorNormalized == null ? 0 : 1,
+                      child: Container(
+                        width: 48,
+                        height: 48,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white70, width: 2),
+                          boxShadow: const [
+                            BoxShadow(color: Colors.black54, blurRadius: 6),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            );
+          },
         ),
       ),
     );
@@ -815,7 +800,7 @@ class _CameraScreenState extends State<CameraScreen>
         previewSize.height <= 0) {
       return fallback;
     }
-    return previewSize;
+    return _normalizeViewportSize(previewSize);
   }
 
   WatermarkCanvasSize _resolveCanvasSize(

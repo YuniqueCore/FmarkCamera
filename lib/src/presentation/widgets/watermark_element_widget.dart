@@ -5,6 +5,7 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:vector_math/vector_math_64.dart' show Matrix4, Vector3;
 
 import 'package:fmark_camera/src/domain/models/watermark_context.dart';
 import 'package:fmark_camera/src/domain/models/watermark_element.dart';
@@ -100,7 +101,8 @@ class _EditableWatermarkElementState extends State<EditableWatermarkElement> {
   late Offset _currentPosition;
   late double _currentScale;
   late double _startScale;
-  late double _initialRotation;
+  late double _currentRotation;
+  late double _startRotation;
   Offset? _lastFocalPoint;
   int _activePointers = 0;
 
@@ -128,7 +130,8 @@ class _EditableWatermarkElementState extends State<EditableWatermarkElement> {
     _currentPosition = transform.position;
     _currentScale = transform.scale;
     _startScale = transform.scale;
-    _initialRotation = transform.rotation;
+    _currentRotation = transform.rotation;
+    _startRotation = transform.rotation;
   }
 
   void _onScaleStart(ScaleStartDetails details) {
@@ -138,6 +141,7 @@ class _EditableWatermarkElementState extends State<EditableWatermarkElement> {
     _syncFromWidget();
     _activePointers = details.pointerCount;
     _lastFocalPoint = details.focalPoint;
+    _startRotation = _currentRotation;
     widget.onSelected?.call();
   }
 
@@ -177,13 +181,15 @@ class _EditableWatermarkElementState extends State<EditableWatermarkElement> {
     if (details.pointerCount >= 2) {
       final nextScale = (_startScale * details.scale).clamp(0.2, 5.0);
       _currentScale = nextScale;
+      final rotationDelta = details.rotation;
+      _currentRotation = _wrapAngle(_startRotation + rotationDelta);
     }
 
     widget.onTransform(
       widget.element.transform.copyWith(
         position: _currentPosition,
         scale: _currentScale,
-        rotation: _initialRotation,
+        rotation: _currentRotation,
       ),
     );
   }
@@ -191,7 +197,7 @@ class _EditableWatermarkElementState extends State<EditableWatermarkElement> {
   void _onScaleEnd(ScaleEndDetails details) {
     _lastFocalPoint = null;
     _startScale = _currentScale;
-    _initialRotation = widget.element.transform.rotation;
+    _startRotation = _currentRotation;
     _activePointers = 0;
   }
 
@@ -211,7 +217,7 @@ class _EditableWatermarkElementState extends State<EditableWatermarkElement> {
     _rotationCenterGlobal = box.localToGlobal(centerLocal);
     _rotationStartVector =
         details.globalPosition - (_rotationCenterGlobal ?? details.globalPosition);
-    _rotationBaseAngle = widget.element.transform.rotation;
+    _rotationBaseAngle = _currentRotation;
   }
 
   void _onRotationDragUpdate(DragUpdateDetails details) {
@@ -229,16 +235,17 @@ class _EditableWatermarkElementState extends State<EditableWatermarkElement> {
     final currentDirection = currentVector.direction;
     var rotation = _rotationBaseAngle + (currentDirection - startDirection);
     rotation = _wrapAngle(rotation);
+    _currentRotation = rotation;
     widget.onTransform(
       widget.element.transform.copyWith(rotation: rotation),
     );
-    _initialRotation = rotation;
   }
 
   void _onRotationDragEnd(DragEndDetails details) {
     _rotationCenterGlobal = null;
     _rotationStartVector = null;
-    _rotationBaseAngle = _initialRotation;
+    _rotationBaseAngle = _currentRotation;
+    _startRotation = _currentRotation;
   }
 
   double _wrapAngle(double angle) {
@@ -261,12 +268,16 @@ class _EditableWatermarkElementState extends State<EditableWatermarkElement> {
     final baseHeight = widget.canvasSize.height;
     final scaleX = baseWidth <= 0 ? 1.0 : renderSize.width / baseWidth;
     final scaleY = baseHeight <= 0 ? 1.0 : renderSize.height / baseHeight;
-    final displayScale = (scaleX + scaleY) * 0.5;
-    final effectiveScale = widget.element.transform.scale * displayScale;
+    final overallScaleX = _currentScale * scaleX;
+    final overallScaleY = _currentScale * scaleY;
     final alignment = Alignment(
       (position.dx.clamp(0.0, 1.0) * 2) - 1,
       (position.dy.clamp(0.0, 1.0) * 2) - 1,
     );
+
+    final transformMatrix = Matrix4.identity()
+      ..scaleByVector3(Vector3(overallScaleX, overallScaleY, 1.0))
+      ..rotateZ(_currentRotation);
 
     return Align(
       alignment: alignment,
@@ -277,67 +288,65 @@ class _EditableWatermarkElementState extends State<EditableWatermarkElement> {
         onScaleStart: widget.isLocked ? null : _onScaleStart,
         onScaleUpdate: widget.isLocked ? null : _onScaleUpdate,
         onScaleEnd: widget.isLocked ? null : _onScaleEnd,
-        child: Transform.rotate(
-          angle: widget.element.transform.rotation,
+        child: Transform(
           alignment: Alignment.center,
-          child: Transform.scale(
-            scale: effectiveScale,
-            alignment: Alignment.center,
-            child: Opacity(
-              opacity: widget.element.opacity,
-              child: Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  _WatermarkElementContent(
-                    element: widget.element,
-                    contextData: widget.contextData,
+          transform: transformMatrix,
+          child: Opacity(
+            opacity: widget.element.opacity,
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                _WatermarkElementContent(
+                  element: widget.element,
+                  contextData: widget.contextData,
+                ),
+                if (widget.selected)
+                  Positioned.fill(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        border: Border.all(
+                          color: Colors.orangeAccent,
+                          width: 1.5,
+                        ),
+                      ),
+                    ),
                   ),
-                  if (widget.selected)
-                    Positioned.fill(
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          border: Border.all(
-                              color: Colors.orangeAccent, width: 1.5),
-                        ),
+                if (widget.selected)
+                  const Positioned.fill(
+                    child: IgnorePointer(
+                      child: Stack(
+                        children: [
+                          _SelectionHandle(alignment: Alignment.topLeft),
+                          _SelectionHandle(alignment: Alignment.topRight),
+                          _SelectionHandle(alignment: Alignment.bottomLeft),
+                          _SelectionHandle(alignment: Alignment.bottomRight),
+                        ],
                       ),
                     ),
-                  if (widget.selected)
-                    const Positioned.fill(
-                      child: IgnorePointer(
-                        child: Stack(
-                          children: [
-                            _SelectionHandle(alignment: Alignment.topLeft),
-                            _SelectionHandle(alignment: Alignment.topRight),
-                            _SelectionHandle(alignment: Alignment.bottomLeft),
-                            _SelectionHandle(alignment: Alignment.bottomRight),
-                          ],
-                        ),
+                  ),
+                if (widget.selected)
+                  Positioned(
+                    top: -48,
+                    left: 0,
+                    right: 0,
+                    child: Center(
+                      child: _RotationHandle(
+                        onPanStart: _onRotationDragStart,
+                        onPanUpdate: _onRotationDragUpdate,
+                        onPanEnd: _onRotationDragEnd,
+                        isLocked: widget.isLocked,
                       ),
                     ),
-                  if (widget.selected)
-                    Positioned(
-                      top: -48,
-                      left: 0,
-                      right: 0,
-                      child: Center(
-                        child: _RotationHandle(
-                          onPanStart: _onRotationDragStart,
-                          onPanUpdate: _onRotationDragUpdate,
-                          onPanEnd: _onRotationDragEnd,
-                          isLocked: widget.isLocked,
-                        ),
-                      ),
+                  ),
+                if (widget.selected && widget.onDelete != null)
+                  Positioned(
+                    top: -16,
+                    right: -16,
+                    child: _DeleteHandle(
+                      onPressed: widget.isLocked ? null : widget.onDelete,
                     ),
-                  if (widget.selected && widget.onDelete != null)
-                    Positioned(
-                      top: -16,
-                      right: -16,
-                      child: _DeleteHandle(
-                        onPressed: widget.isLocked ? null : widget.onDelete,
-                      ),
-                    ),
-                ],
-              ),
+                  ),
+              ],
             ),
           ),
         ),

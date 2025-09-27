@@ -7,7 +7,6 @@ import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 
-import 'package:fmark_camera/src/domain/models/camera_resolution_info.dart';
 import 'package:fmark_camera/src/domain/models/watermark_context.dart';
 import 'package:fmark_camera/src/domain/models/watermark_element.dart';
 import 'package:fmark_camera/src/domain/models/watermark_element_payload.dart';
@@ -34,12 +33,6 @@ class _ProfileEditorScreenState extends State<ProfileEditorScreen> {
   final Uuid _uuid = const Uuid();
   late final WatermarkProfilesController _profilesController;
   late final WatermarkContextController _contextController;
-
-  void _disposeControllerLater(TextEditingController controller) {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      controller.dispose();
-    });
-  }
 
   late WatermarkProfile _profile;
   late WatermarkContext _context;
@@ -90,46 +83,6 @@ class _ProfileEditorScreenState extends State<ProfileEditorScreen> {
           .toList(),
       updatedAt: DateTime.now(),
     );
-  }
-
-  /// 同步相机配置变化到水印编辑器
-  void _syncCanvasSizeFromCamera() {
-    final bootstrapper = widget.arguments.bootstrapper;
-    final cameraSettings = bootstrapper.cameraSettingsController;
-
-    // 获取当前相机设置的分辨率信息
-    final photoResolution =
-        cameraSettings.resolutionForMode(CameraCaptureMode.photo);
-    final videoResolution =
-        cameraSettings.resolutionForMode(CameraCaptureMode.video);
-
-    if (photoResolution != null || videoResolution != null) {
-      final resolution = photoResolution ?? videoResolution!;
-      final newCanvasSize = WatermarkCanvasSize(
-        width: resolution.width,
-        height: resolution.height,
-        pixelRatio: MediaQuery.of(context).devicePixelRatio,
-      );
-
-      // 检查画布尺寸是否发生变化
-      if (_profile.canvasSize != newCanvasSize) {
-        setState(() {
-          _profile = _profile.copyWith(
-            canvasSize: newCanvasSize,
-            updatedAt: DateTime.now(),
-          );
-        });
-
-        // 显示提示消息
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-                '画布尺寸已更新为 ${resolution.width.toInt()}x${resolution.height.toInt()}'),
-            duration: const Duration(seconds: 2),
-          ),
-        );
-      }
-    }
   }
 
   @override
@@ -605,7 +558,7 @@ class _ProfileEditorScreenState extends State<ProfileEditorScreen> {
         ],
       ),
     );
-    _disposeControllerLater(controller);
+    controller.dispose();
     if (result == null || result.isEmpty) {
       return;
     }
@@ -702,7 +655,7 @@ class _ProfileEditorScreenState extends State<ProfileEditorScreen> {
         );
       },
     );
-    _disposeControllerLater(controller);
+    controller.dispose();
     if (result == null || result.isEmpty) {
       return;
     }
@@ -1020,7 +973,7 @@ class _ProfileEditorScreenState extends State<ProfileEditorScreen> {
         );
       },
     );
-    _disposeControllerLater(fontController);
+    fontController.dispose();
   }
 
   Future<void> _openTransformSheet(WatermarkElement element) async {
@@ -1106,18 +1059,22 @@ class _ProfileEditorScreenState extends State<ProfileEditorScreen> {
         );
       },
     );
-    _disposeControllerLater(positionX);
-    _disposeControllerLater(positionY);
-    _disposeControllerLater(scaleController);
-    _disposeControllerLater(rotationController);
+    final xText = positionX.text;
+    final yText = positionY.text;
+    final scaleText = scaleController.text;
+    final rotationText = rotationController.text;
+    positionX.dispose();
+    positionY.dispose();
+    scaleController.dispose();
+    rotationController.dispose();
     if (confirmed != true) {
       return;
     }
-    final dx = double.tryParse(positionX.text)?.clamp(0.0, 1.0) ?? position.dx;
-    final dy = double.tryParse(positionY.text)?.clamp(0.0, 1.0) ?? position.dy;
+    final dx = double.tryParse(xText)?.clamp(0.0, 1.0) ?? position.dx;
+    final dy = double.tryParse(yText)?.clamp(0.0, 1.0) ?? position.dy;
     final newScale =
-        double.tryParse(scaleController.text)?.clamp(0.3, 3.0) ?? scale;
-    final degrees = double.tryParse(rotationController.text) ?? 0;
+        double.tryParse(scaleText)?.clamp(0.3, 3.0) ?? scale;
+    final degrees = double.tryParse(rotationText) ?? 0;
     final radians = (degrees * math.pi) / 180;
     _applyElement(
       element.copyWith(
