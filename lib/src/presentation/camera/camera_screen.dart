@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io' show File;
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
@@ -754,29 +755,45 @@ class _CameraScreenState extends State<CameraScreen>
     CameraController controller,
   ) {
     final orientation = MediaQuery.of(context).orientation;
+
+    // 优先使用捕获尺寸，确保水印画布与实际拍照/录像分辨率一致
     final baseSize = _currentCaptureInfo != null
         ? Size(_currentCaptureInfo!.width, _currentCaptureInfo!.height)
         : controller.value.previewSize;
+
     if (baseSize == null || !mounted) {
       return;
     }
+
+    // 计算有效显示尺寸，保持正确的宽高比
     final effective = _effectivePreviewSize(baseSize, orientation);
+
+    // 检查是否需要更新画布尺寸
     if (_lastSyncedCanvasSize != null) {
       final last = _lastSyncedCanvasSize!;
-      if ((last.width - effective.width).abs() < 0.5 &&
-          (last.height - effective.height).abs() < 0.5) {
+      // 使用更宽松的容差来避免频繁更新
+      if ((last.width - effective.width).abs() < 1.0 &&
+          (last.height - effective.height).abs() < 1.0) {
         return;
       }
     }
+
     _lastSyncedCanvasSize = effective;
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) {
         return;
       }
+
+      // 使用捕获分辨率作为画布尺寸，确保水印位置与实际输出一致
+      final captureSize = _currentCaptureInfo != null
+          ? Size(_currentCaptureInfo!.width, _currentCaptureInfo!.height)
+          : effective;
+
       _profilesController.ensureCanvasSize(
         WatermarkCanvasSize(
-          width: effective.width,
-          height: effective.height,
+          width: captureSize.width,
+          height: captureSize.height,
           pixelRatio: MediaQuery.of(context).devicePixelRatio,
         ),
         force: true,
@@ -792,13 +809,31 @@ class _CameraScreenState extends State<CameraScreen>
         previewSize.height <= 0) {
       return fallback;
     }
-    final isLandscapePreview = previewSize.width >= previewSize.height;
-    if (orientation == Orientation.portrait && isLandscapePreview) {
-      return Size(previewSize.height, previewSize.width);
+
+    // 相机预览尺寸通常是横屏的（width > height）
+    final isLandscapePreview = previewSize.width > previewSize.height;
+
+    // 根据屏幕方向调整预览尺寸
+    if (orientation == Orientation.portrait) {
+      // 竖屏模式下，如果预览是横屏的，需要调整为适合竖屏显示的尺寸
+      if (isLandscapePreview) {
+        // 保持预览的宽高比，但调整尺寸使其适合竖屏显示
+        final aspectRatio = previewSize.width / previewSize.height;
+        if (aspectRatio > 1.0) {
+          // 横屏预览，计算合适的显示尺寸
+          return Size(previewSize.height * aspectRatio, previewSize.height);
+        }
+      }
+    } else if (orientation == Orientation.landscape) {
+      // 横屏模式下，如果预览是竖屏的，需要调整
+      if (!isLandscapePreview) {
+        final aspectRatio = previewSize.width / previewSize.height;
+        if (aspectRatio < 1.0) {
+          return Size(previewSize.height * aspectRatio, previewSize.height);
+        }
+      }
     }
-    if (orientation == Orientation.landscape && !isLandscapePreview) {
-      return Size(previewSize.height, previewSize.width);
-    }
+
     return previewSize;
   }
 
@@ -1024,29 +1059,43 @@ class _CameraScreenState extends State<CameraScreen>
     if (controller == null || profile == null) {
       return;
     }
+
     if (_isRecording) {
+      // 停止录像
       try {
         final file = await controller.stopVideoRecording();
         setState(() => _isRecording = false);
-        String? thumbnailData;
-        if (!kIsWeb) {
-          thumbnailData = await _generateVideoThumbnail(file.path);
+
+        // 验证视频文件
+        if (!kIsWeb && await File(file.path).exists() && await File(file.path).length() > 0) {
+          final thumbnailData = await _generateVideoThumbnail(file.path);
+
+          await _storeCapture(
+            path: file.path,
+            mediaType: WatermarkMediaType.video,
+            previewSize: controller.value.previewSize,
+            captureSize: _currentCaptureInfo?.toSize(),
+            aspectRatio: controller.value.aspectRatio,
+            profile: profile,
+            thumbnailData: thumbnailData,
+          );
+
+          if (!mounted) {
+            return;
+          }
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('视频已保存，可在图库中导出水印版本')),
+          );
+        } else {
+          // 视频文件无效
+          setState(() => _isRecording = false);
+          if (!mounted) {
+            return;
+          }
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('录制的视频文件无效')),
+          );
         }
-        await _storeCapture(
-          path: file.path,
-          mediaType: WatermarkMediaType.video,
-          previewSize: controller.value.previewSize,
-          captureSize: _currentCaptureInfo?.toSize(),
-          aspectRatio: controller.value.aspectRatio,
-          profile: profile,
-          thumbnailData: thumbnailData,
-        );
-        if (!mounted) {
-          return;
-        }
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('视频已保存，可在图库中导出水印版本')),
-        );
       } on CameraException catch (error) {
         setState(() => _isRecording = false);
         if (!mounted) {
@@ -1059,6 +1108,7 @@ class _CameraScreenState extends State<CameraScreen>
         );
       } catch (error) {
         setState(() => _isRecording = false);
+        debugPrint('Stop video recording error: $error');
         if (!mounted) {
           return;
         }
@@ -1067,30 +1117,45 @@ class _CameraScreenState extends State<CameraScreen>
         );
       }
     } else {
+      // 开始录像
       if (!controller.value.isInitialized) {
         return;
       }
+
+      // 检查麦克风权限（Android需要）
       if (!kIsWeb) {
-        final micStatus = await Permission.microphone.request();
-        if (!micStatus.isGranted) {
-          if (!mounted) {
+        try {
+          final micStatus = await Permission.microphone.request();
+          if (!micStatus.isGranted) {
+            if (!mounted) {
+              return;
+            }
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('需要麦克风权限才能录制视频')),
+            );
             return;
           }
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('需要麦克风权限才能录制视频')),
-          );
-          return;
+        } catch (error) {
+          debugPrint('Microphone permission check failed: $error');
+          // 继续尝试录像，即使权限检查失败
         }
       }
+
       try {
-        await controller.prepareForVideoRecording();
-      } catch (error) {
-        debugPrint('prepareForVideoRecording skipped: $error');
-      }
-      try {
+        // 准备视频录制
+        try {
+          await controller.prepareForVideoRecording();
+        } catch (error) {
+          debugPrint('prepareForVideoRecording failed, continuing anyway: $error');
+        }
+
+        // 开始录制
         await controller.startVideoRecording();
         setState(() => _isRecording = true);
+
+        debugPrint('Video recording started successfully');
       } on CameraException catch (error) {
+        debugPrint('Start video recording CameraException: ${error.code} - ${error.description}');
         if (!mounted) {
           return;
         }
@@ -1100,6 +1165,7 @@ class _CameraScreenState extends State<CameraScreen>
           ),
         );
       } catch (error) {
+        debugPrint('Start video recording error: $error');
         if (!mounted) {
           return;
         }
@@ -1218,23 +1284,41 @@ CameraResolutionInfo? _selectCaptureInfo({
   final sizes = mode == CameraCaptureMode.photo
       ? capabilities?.photoSizes
       : capabilities?.videoSizes;
+
   if (sizes == null || sizes.isEmpty) {
     return preferred;
   }
 
+  // 首先尝试找到与预览尺寸匹配的分辨率
   if (preferred != null) {
+    // 优先选择与预览尺寸宽高比相同的分辨率
+    final preferredAspect = preferred.aspectRatio;
     for (final size in sizes) {
-      if (size.approximatelyEquals(preferred, tolerance: 2.0)) {
+      if (_isAspectClose(size.aspectRatio, preferredAspect)) {
+        return size;
+      }
+    }
+
+    // 如果没有找到相同宽高比的，寻找尺寸相近的分辨率
+    for (final size in sizes) {
+      if (size.approximatelyEquals(preferred, tolerance: 32.0)) {
         return size;
       }
     }
   }
 
+  // 按预设选择最佳分辨率
   switch (preset) {
     case ResolutionPreset.max:
       return sizes.first;
     case ResolutionPreset.ultraHigh:
       return _pickResolution(
+            sizes,
+            minWidth: 3264,
+            minHeight: 2448,
+            preferredAspect: 4 / 3,
+          ) ??
+          _pickResolution(
             sizes,
             minWidth: 3840,
             minHeight: 2160,
@@ -1246,6 +1330,7 @@ CameraResolutionInfo? _selectCaptureInfo({
             sizes,
             minWidth: 1920,
             minHeight: 1080,
+            preferredAspect: 16 / 9,
           ) ??
           sizes.first;
     case ResolutionPreset.high:
@@ -1253,6 +1338,7 @@ CameraResolutionInfo? _selectCaptureInfo({
             sizes,
             minWidth: 1280,
             minHeight: 720,
+            preferredAspect: 16 / 9,
           ) ??
           sizes.first;
     case ResolutionPreset.medium:
@@ -1260,6 +1346,7 @@ CameraResolutionInfo? _selectCaptureInfo({
             sizes,
             minWidth: 720,
             minHeight: 480,
+            preferredAspect: 3 / 2,
           ) ??
           sizes.first;
     case ResolutionPreset.low:

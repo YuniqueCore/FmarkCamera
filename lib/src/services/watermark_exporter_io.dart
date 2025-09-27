@@ -370,9 +370,18 @@ class IoWatermarkExporter implements WatermarkExporter {
         );
       case WatermarkExportDestination.gallery:
         final success = await _saveToGallery(sourcePath, mediaType);
+        // 保存到相册后，源文件可以删除，因为相册中已经有副本
+        try {
+          final sourceFile = File(sourcePath);
+          if (await sourceFile.exists()) {
+            await sourceFile.delete();
+          }
+        } catch (e) {
+          developer.log('删除临时文件失败: $e', name: 'WatermarkExporter');
+        }
         return WatermarkExportResult(
           destination: WatermarkExportDestination.gallery,
-          outputPath: sourcePath,
+          outputPath: null, // 相册导出不返回文件路径，因为文件已保存到系统相册
           success: success,
           userMessage: success ? '已保存到系统相册' : '保存到系统相册失败，请检查权限',
         );

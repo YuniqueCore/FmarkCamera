@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:fmark_camera/src/domain/models/camera_resolution_info.dart';
 import 'package:fmark_camera/src/domain/models/watermark_profile.dart';
@@ -25,12 +26,39 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late final CameraSettingsController _settings;
   late final Future<List<CameraDeviceCapabilities>> _capabilitiesFuture;
 
+  // 新增：应用设置状态
+  bool _showWatermarkPreview = true;
+  bool _autoSaveToGallery = true;
+  String _videoQuality = 'high';
+  String _exportFormat = 'auto';
+
   @override
   void initState() {
     super.initState();
     _settings = widget.bootstrapper.cameraSettingsController;
     _capabilitiesFuture =
         widget.bootstrapper.cameraCapabilities.loadCapabilities();
+    _loadAppSettings();
+  }
+
+  // 新增：加载应用设置
+  Future<void> _loadAppSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _showWatermarkPreview = prefs.getBool('show_watermark_preview') ?? true;
+      _autoSaveToGallery = prefs.getBool('auto_save_to_gallery') ?? true;
+      _videoQuality = prefs.getString('video_quality') ?? 'high';
+      _exportFormat = prefs.getString('export_format') ?? 'auto';
+    });
+  }
+
+  // 新增：保存应用设置
+  Future<void> _saveAppSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('show_watermark_preview', _showWatermarkPreview);
+    await prefs.setBool('auto_save_to_gallery', _autoSaveToGallery);
+    await prefs.setString('video_quality', _videoQuality);
+    await prefs.setString('export_format', _exportFormat);
   }
 
   Future<void> _openAppSettings(BuildContext context) async {
@@ -73,6 +101,67 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     isLoading: isLoading,
                   ),
                   const Divider(),
+                  _buildSectionHeader('应用设置'),
+                  SwitchListTile(
+                    secondary: const Icon(Icons.visibility),
+                    title: const Text('显示水印预览'),
+                    subtitle: const Text('在相机界面实时显示水印预览'),
+                    value: _showWatermarkPreview,
+                    onChanged: (value) {
+                      setState(() => _showWatermarkPreview = value);
+                      _saveAppSettings();
+                    },
+                  ),
+                  SwitchListTile(
+                    secondary: const Icon(Icons.save),
+                    title: const Text('自动保存到相册'),
+                    subtitle: const Text('拍摄后自动保存到系统相册'),
+                    value: _autoSaveToGallery,
+                    onChanged: (value) {
+                      setState(() => _autoSaveToGallery = value);
+                      _saveAppSettings();
+                    },
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.videocam),
+                    title: const Text('视频质量'),
+                    subtitle: Text(_getVideoQualityLabel(_videoQuality)),
+                    trailing: DropdownButton<String>(
+                      value: _videoQuality,
+                      onChanged: (value) {
+                        if (value != null) {
+                          setState(() => _videoQuality = value);
+                          _saveAppSettings();
+                        }
+                      },
+                      items: const [
+                        DropdownMenuItem(value: 'low', child: Text('低质量')),
+                        DropdownMenuItem(value: 'medium', child: Text('中等质量')),
+                        DropdownMenuItem(value: 'high', child: Text('高质量')),
+                      ],
+                    ),
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.image),
+                    title: const Text('导出格式'),
+                    subtitle: Text(_getExportFormatLabel(_exportFormat)),
+                    trailing: DropdownButton<String>(
+                      value: _exportFormat,
+                      onChanged: (value) {
+                        if (value != null) {
+                          setState(() => _exportFormat = value);
+                          _saveAppSettings();
+                        }
+                      },
+                      items: const [
+                        DropdownMenuItem(value: 'auto', child: Text('自动')),
+                        DropdownMenuItem(value: 'jpg', child: Text('JPEG')),
+                        DropdownMenuItem(value: 'png', child: Text('PNG')),
+                      ],
+                    ),
+                  ),
+                  const Divider(),
+                  _buildSectionHeader('系统设置'),
                   ListTile(
                     leading: const Icon(Icons.security),
                     title: const Text('权限管理'),
@@ -83,7 +172,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   Padding(
                     padding: const EdgeInsets.all(16.0),
                     child: Text(
-                      '水印配置会保存在本地文件中，导出时才会将水印合成到新的文件里。',
+                      '水印配置会保存在本地文件中，导出时才会将水印合成到新的文件里。\n'
+                      '所有设置更改会自动保存。',
                       style: Theme.of(context).textTheme.bodyMedium,
                     ),
                   ),
@@ -342,6 +432,48 @@ class _SettingsScreenState extends State<SettingsScreen> {
         return '外接镜头';
       default:
         return lensFacing;
+    }
+  }
+
+  // 新增：构建章节标题
+  Widget _buildSectionHeader(String title) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+      child: Text(
+        title,
+        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+          color: Theme.of(context).colorScheme.primary,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+
+  // 新增：获取视频质量标签
+  String _getVideoQualityLabel(String quality) {
+    switch (quality) {
+      case 'low':
+        return '低质量 (较小文件)';
+      case 'medium':
+        return '中等质量 (平衡大小和质量)';
+      case 'high':
+        return '高质量 (更大文件)';
+      default:
+        return '高质量';
+    }
+  }
+
+  // 新增：获取导出格式标签
+  String _getExportFormatLabel(String format) {
+    switch (format) {
+      case 'auto':
+        return '自动选择最佳格式';
+      case 'jpg':
+        return 'JPEG (有损压缩，较小文件)';
+      case 'png':
+        return 'PNG (无损压缩，较大文件)';
+      default:
+        return '自动选择最佳格式';
     }
   }
 }

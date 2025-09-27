@@ -1,5 +1,6 @@
 import 'dart:io' show Platform;
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/services.dart';
 
 import 'package:fmark_camera/src/domain/models/camera_resolution_info.dart';
@@ -29,6 +30,39 @@ class CameraCapabilitiesService {
   List<CameraDeviceCapabilities>? _cached;
 
   Future<List<CameraDeviceCapabilities>> loadCapabilities() async {
+    if (kIsWeb) {
+      // Web 端返回默认的相机能力
+      return [
+        CameraDeviceCapabilities(
+          cameraId: '0',
+          lensFacing: 'back',
+          photoSizes: [
+            const CameraResolutionInfo(width: 1920, height: 1080),
+            const CameraResolutionInfo(width: 1280, height: 720),
+            const CameraResolutionInfo(width: 640, height: 480),
+          ],
+          videoSizes: [
+            const CameraResolutionInfo(width: 1920, height: 1080),
+            const CameraResolutionInfo(width: 1280, height: 720),
+            const CameraResolutionInfo(width: 640, height: 480),
+          ],
+        ),
+        CameraDeviceCapabilities(
+          cameraId: '1',
+          lensFacing: 'front',
+          photoSizes: [
+            const CameraResolutionInfo(width: 1920, height: 1080),
+            const CameraResolutionInfo(width: 1280, height: 720),
+            const CameraResolutionInfo(width: 640, height: 480),
+          ],
+          videoSizes: [
+            const CameraResolutionInfo(width: 1920, height: 1080),
+            const CameraResolutionInfo(width: 1280, height: 720),
+            const CameraResolutionInfo(width: 640, height: 480),
+          ],
+        ),
+      ];
+    }
     if (!Platform.isAndroid) {
       return const <CameraDeviceCapabilities>[];
     }

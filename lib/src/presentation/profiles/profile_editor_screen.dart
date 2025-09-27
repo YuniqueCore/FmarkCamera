@@ -7,6 +7,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 
+import 'package:fmark_camera/src/domain/models/camera_resolution_info.dart';
 import 'package:fmark_camera/src/domain/models/watermark_context.dart';
 import 'package:fmark_camera/src/domain/models/watermark_element.dart';
 import 'package:fmark_camera/src/domain/models/watermark_element_payload.dart';
@@ -61,11 +62,18 @@ class _ProfileEditorScreenState extends State<ProfileEditorScreen> {
       (item) => item.id == widget.arguments.profileId,
       orElse: () => _profilesController.profiles.first,
     );
+
+    // 确保画布尺寸与实际相机配置一致
     final fallbackCanvas = widget.arguments.fallbackCanvasSize ??
         source.canvasSize ??
-        const WatermarkCanvasSize(width: 1080, height: 1920);
+        const WatermarkCanvasSize(
+            width: 1920, height: 1080); // 使用常见的 16:9 比例作为默认
+
+    // 如果提供了 fallback 尺寸但没有设置 canvasSize，则使用 fallback 尺寸
+    final canvasSize = source.canvasSize ?? fallbackCanvas;
+
     _profile = source.copyWith(
-      canvasSize: fallbackCanvas,
+      canvasSize: canvasSize,
       elements: source.elements
           .map(
             (element) => WatermarkElement(
@@ -82,6 +90,46 @@ class _ProfileEditorScreenState extends State<ProfileEditorScreen> {
           .toList(),
       updatedAt: DateTime.now(),
     );
+  }
+
+  /// 同步相机配置变化到水印编辑器
+  void _syncCanvasSizeFromCamera() {
+    final bootstrapper = widget.arguments.bootstrapper;
+    final cameraSettings = bootstrapper.cameraSettingsController;
+
+    // 获取当前相机设置的分辨率信息
+    final photoResolution =
+        cameraSettings.resolutionForMode(CameraCaptureMode.photo);
+    final videoResolution =
+        cameraSettings.resolutionForMode(CameraCaptureMode.video);
+
+    if (photoResolution != null || videoResolution != null) {
+      final resolution = photoResolution ?? videoResolution!;
+      final newCanvasSize = WatermarkCanvasSize(
+        width: resolution.width,
+        height: resolution.height,
+        pixelRatio: MediaQuery.of(context).devicePixelRatio,
+      );
+
+      // 检查画布尺寸是否发生变化
+      if (_profile.canvasSize != newCanvasSize) {
+        setState(() {
+          _profile = _profile.copyWith(
+            canvasSize: newCanvasSize,
+            updatedAt: DateTime.now(),
+          );
+        });
+
+        // 显示提示消息
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+                '画布尺寸已更新为 ${resolution.width.toInt()}x${resolution.height.toInt()}'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    }
   }
 
   @override
@@ -322,7 +370,12 @@ class _ProfileEditorScreenState extends State<ProfileEditorScreen> {
           scale: 1,
           rotation: 0,
         ),
-        payload: const WatermarkElementPayload(text: '编辑文本'),
+        payload: const WatermarkElementPayload(text: '自定义文本'),
+        textStyle: const WatermarkTextStyle(
+          fontSize: 16,
+          fontWeight: FontWeight.w600,
+          color: Colors.white,
+        ),
         zIndex: _profile.elements.length,
       ),
     );
@@ -337,6 +390,14 @@ class _ProfileEditorScreenState extends State<ProfileEditorScreen> {
           position: Offset(0.5, 0.2),
           scale: 1,
           rotation: 0,
+        ),
+        textStyle: const WatermarkTextStyle(
+          fontSize: 14,
+          fontWeight: FontWeight.w600,
+          color: Colors.white,
+        ),
+        payload: const WatermarkElementPayload(
+          timeFormat: 'yyyy-MM-dd HH:mm',
         ),
         zIndex: _profile.elements.length,
       ),
@@ -353,6 +414,15 @@ class _ProfileEditorScreenState extends State<ProfileEditorScreen> {
           scale: 1,
           rotation: 0,
         ),
+        textStyle: const WatermarkTextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w500,
+          color: Colors.white,
+        ),
+        payload: const WatermarkElementPayload(
+          showAddress: true,
+          showCoordinates: false,
+        ),
         zIndex: _profile.elements.length,
       ),
     );
@@ -367,6 +437,14 @@ class _ProfileEditorScreenState extends State<ProfileEditorScreen> {
           position: Offset(0.5, 0.4),
           scale: 1,
           rotation: 0,
+        ),
+        textStyle: const WatermarkTextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w500,
+          color: Colors.white,
+        ),
+        payload: const WatermarkElementPayload(
+          showWeatherDescription: true,
         ),
         zIndex: _profile.elements.length,
       ),
@@ -431,6 +509,37 @@ class _ProfileEditorScreenState extends State<ProfileEditorScreen> {
   }
 
   void _removeElement(String elementId) {
+    final element = _profile.elements.firstWhere((e) => e.id == elementId);
+    final elementTitle = _titleForElement(element);
+
+    // 显示确认对话框
+    showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('删除水印元素'),
+        content: Text('确定要删除 "$elementTitle" 吗？此操作无法撤销。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: FilledButton.styleFrom(
+              backgroundColor: Colors.redAccent,
+            ),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    ).then((confirmed) {
+      if (confirmed == true) {
+        _performRemoveElement(elementId);
+      }
+    });
+  }
+
+  void _performRemoveElement(String elementId) {
     setState(() {
       _profile = _profile.copyWith(
         elements: _profile.elements
@@ -442,6 +551,14 @@ class _ProfileEditorScreenState extends State<ProfileEditorScreen> {
         _selectedElementId = null;
       }
     });
+
+    // 显示成功提示
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('水印元素已删除'),
+        duration: Duration(seconds: 2),
+      ),
+    );
   }
 
   void _openContentSheet(WatermarkElement element) {
@@ -1073,13 +1190,20 @@ class _ProfileEditorScreenState extends State<ProfileEditorScreen> {
     final elements = [..._profile.elements]
       ..sort((a, b) => b.zIndex.compareTo(a.zIndex));
     return Container(
-      width: 240,
+      width: 260,
       margin: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         color: const Color(0xFF141820),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: Colors.white12),
+        boxShadow: const [
+          BoxShadow(
+            color: Colors.black26,
+            blurRadius: 8,
+            offset: Offset(0, 4),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1091,7 +1215,7 @@ class _ProfileEditorScreenState extends State<ProfileEditorScreen> {
                 const Icon(Icons.layers, color: Colors.white70, size: 18),
                 const SizedBox(width: 8),
                 Text(
-                  '元素层级',
+                  '元素层级 (${elements.length})',
                   style: Theme.of(context)
                       .textTheme
                       .titleMedium
@@ -1103,9 +1227,24 @@ class _ProfileEditorScreenState extends State<ProfileEditorScreen> {
           Expanded(
             child: elements.isEmpty
                 ? const Center(
-                    child: Text(
-                      '暂无元素',
-                      style: TextStyle(color: Colors.white54),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.layers_outlined,
+                          color: Colors.white54,
+                          size: 48,
+                        ),
+                        SizedBox(height: 12),
+                        Text(
+                          '暂无元素',
+                          style: TextStyle(color: Colors.white54),
+                        ),
+                        Text(
+                          '点击下方按钮添加',
+                          style: TextStyle(color: Colors.white38, fontSize: 12),
+                        ),
+                      ],
                     ),
                   )
                 : ReorderableListView.builder(
@@ -1114,6 +1253,22 @@ class _ProfileEditorScreenState extends State<ProfileEditorScreen> {
                     itemCount: elements.length,
                     buildDefaultDragHandles: false,
                     onReorder: _onLayerReorder,
+                    proxyDecorator: (child, index, animation) {
+                      return Material(
+                        color: Colors.transparent,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: Colors.blueAccent.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: Colors.blueAccent,
+                              width: 2,
+                            ),
+                          ),
+                          child: child,
+                        ),
+                      );
+                    },
                     itemBuilder: (context, index) {
                       final element = elements[index];
                       final selected = element.id == _selectedElementId;
@@ -1130,12 +1285,18 @@ class _ProfileEditorScreenState extends State<ProfileEditorScreen> {
                           border: Border.all(
                             color:
                                 selected ? Colors.orangeAccent : Colors.white12,
-                            width: selected ? 1.5 : 1,
+                            width: selected ? 2 : 1,
                           ),
                         ),
                         child: ListTile(
                           dense: true,
-                          leading: Icon(icon, color: Colors.white70, size: 18),
+                          leading: CircleAvatar(
+                            radius: 14,
+                            backgroundColor: selected
+                                ? Colors.orangeAccent.withValues(alpha: 0.2)
+                                : Colors.white.withValues(alpha: 0.1),
+                            child: Icon(icon, color: Colors.white70, size: 16),
+                          ),
                           title: Text(
                             title,
                             style: TextStyle(
@@ -1144,10 +1305,34 @@ class _ProfileEditorScreenState extends State<ProfileEditorScreen> {
                               fontWeight:
                                   selected ? FontWeight.w600 : FontWeight.w500,
                             ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          subtitle: Text(
+                            '层级 ${elements.length - index}',
+                            style: const TextStyle(
+                              color: Colors.white54,
+                              fontSize: 11,
+                            ),
                           ),
                           trailing: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
+                              // 可见性切换
+                              IconButton(
+                                iconSize: 16,
+                                icon: Icon(
+                                  element.opacity > 0.5
+                                      ? Icons.visibility
+                                      : Icons.visibility_off,
+                                ),
+                                tooltip:
+                                    element.opacity > 0.5 ? '隐藏元素' : '显示元素',
+                                color: element.opacity > 0.5
+                                    ? Colors.greenAccent
+                                    : Colors.white38,
+                                onPressed: () =>
+                                    _toggleElementVisibility(element),
+                              ),
                               IconButton(
                                 iconSize: 18,
                                 icon: Icon(
@@ -1224,6 +1409,22 @@ class _ProfileEditorScreenState extends State<ProfileEditorScreen> {
   void _toggleElementLock(WatermarkElement element) {
     _applyElement(
       element.copyWith(isLocked: !element.isLocked),
+    );
+  }
+
+  // 新增：切换元素可见性
+  void _toggleElementVisibility(WatermarkElement element) {
+    final newOpacity = element.opacity > 0.5 ? 0.3 : 1.0;
+    _applyElement(
+      element.copyWith(opacity: newOpacity),
+    );
+
+    // 显示操作反馈
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(newOpacity > 0.5 ? '元素已显示' : '元素已隐藏'),
+        duration: const Duration(seconds: 1),
+      ),
     );
   }
 

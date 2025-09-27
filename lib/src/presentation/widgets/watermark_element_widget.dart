@@ -158,12 +158,24 @@ class _EditableWatermarkElementState extends State<EditableWatermarkElement> {
         (_currentPosition.dy + normalized.dy).clamp(0.0, 1.0),
       );
     }
-    final scale = (_initialScale * details.scale).clamp(0.3, 3.0);
+
+    // 改进的缩放逻辑：同时处理缩放和旋转
+    final scale = (_initialScale * details.scale).clamp(0.1, 5.0);
+
+    // 如果检测到旋转（通过 focalPointDelta 计算）
+    double rotation = _initialRotation;
+    if (details.pointerCount > 1 && details.focalPointDelta != null) {
+      // 根据两个手指的相对位置变化计算旋转
+      final delta = details.focalPointDelta!;
+      final rotationDelta = delta.direction * 0.01; // 调整灵敏度
+      rotation = (_initialRotation + rotationDelta).clamp(-math.pi, math.pi);
+    }
+
     widget.onTransform(
       widget.element.transform.copyWith(
         position: _currentPosition,
         scale: scale,
-        rotation: _initialRotation,
+        rotation: rotation,
       ),
     );
   }
@@ -491,18 +503,21 @@ class _RotationHandle extends StatelessWidget {
     return GestureDetector(
       onPanStart: enabled ? onPanStart : null,
       onPanUpdate: enabled ? onPanUpdate : null,
-      child: DecoratedBox(
+      child: Container(
+        width: 32,
+        height: 32,
         decoration: BoxDecoration(
           color: enabled ? Colors.blueAccent : Colors.white24,
-          borderRadius: BorderRadius.circular(16),
+          shape: BoxShape.circle,
           boxShadow: const [
             BoxShadow(
                 color: Colors.black54, blurRadius: 4, offset: Offset(0, 2)),
           ],
         ),
-        child: const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: Icon(Icons.rotate_right, color: Colors.white, size: 18),
+        child: Icon(
+          Icons.rotate_90_degrees_ccw,
+          color: Colors.white,
+          size: 16,
         ),
       ),
     );
