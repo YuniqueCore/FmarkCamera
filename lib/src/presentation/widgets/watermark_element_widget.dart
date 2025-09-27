@@ -196,12 +196,38 @@ class _EditableWatermarkElementState extends State<EditableWatermarkElement> {
     if (widget.isLocked) {
       return;
     }
-    final nextRotation = (_rotationDuringDrag + details.delta.dx * 0.01)
-        .clamp(-math.pi, math.pi);
-    _rotationDuringDrag = nextRotation;
-    widget.onTransform(
-      widget.element.transform.copyWith(rotation: nextRotation),
+
+    // 改进旋转计算：基于手柄位置计算角度
+    final renderSize = widget.renderSize;
+    final elementPos = widget.element.transform.position;
+
+    // 计算手柄在屏幕上的位置（居中在元素上方）
+    final handleOffset = Offset(
+      elementPos.dx * renderSize.width,
+      (elementPos.dy * renderSize.height) - 48, // 手柄在元素上方48像素
     );
+
+    // 计算从元素中心到触摸点的向量
+    final centerOffset = Offset(
+      elementPos.dx * renderSize.width,
+      elementPos.dy * renderSize.height,
+    );
+
+    final touchOffset = Offset(
+      handleOffset.dx + details.localPosition.dx,
+      handleOffset.dy + details.localPosition.dy,
+    );
+
+    final delta = touchOffset - centerOffset;
+    final angle = math.atan2(delta.dy, delta.dx);
+
+    // 限制旋转角度范围
+    final clampedRotation = angle.clamp(-math.pi, math.pi);
+
+    widget.onTransform(
+      widget.element.transform.copyWith(rotation: clampedRotation),
+    );
+    _rotationDuringDrag = clampedRotation;
   }
 
   void _nudgePosition(Offset delta) {

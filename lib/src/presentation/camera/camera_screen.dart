@@ -232,6 +232,21 @@ class _CameraScreenState extends State<CameraScreen>
         enableAudio: _currentMode == CameraCaptureMode.video,
       );
       await controller.initialize();
+
+      // 确保分辨率设置正确应用
+      if (captureInfo != null) {
+        try {
+          // 验证控制器是否正确应用了分辨率设置
+          final controllerPreviewSize = controller.value.previewSize;
+          if (controllerPreviewSize != null) {
+            debugPrint('Controller preview size: ${controllerPreviewSize.width}x${controllerPreviewSize.height}');
+            debugPrint('Selected capture info: ${captureInfo.width}x${captureInfo.height}');
+          }
+        } catch (e) {
+          debugPrint('Error checking controller resolution: $e');
+        }
+      }
+
       await _applyFlashMode(controller);
 
       final previewSize = controller.value.previewSize;
@@ -1289,30 +1304,20 @@ CameraResolutionInfo? _selectCaptureInfo({
     return preferred;
   }
 
-  // 首先尝试找到与预览尺寸匹配的分辨率
-  if (preferred != null) {
-    // 优先选择与预览尺寸宽高比相同的分辨率
-    final preferredAspect = preferred.aspectRatio;
-    for (final size in sizes) {
-      if (_isAspectClose(size.aspectRatio, preferredAspect)) {
-        return size;
-      }
-    }
-
-    // 如果没有找到相同宽高比的，寻找尺寸相近的分辨率
-    for (final size in sizes) {
-      if (size.approximatelyEquals(preferred, tolerance: 32.0)) {
-        return size;
-      }
-    }
-  }
-
-  // 按预设选择最佳分辨率
+  // 改进分辨率选择逻辑
   switch (preset) {
     case ResolutionPreset.max:
-      return sizes.first;
+      return sizes.first; // 返回最高分辨率
+
     case ResolutionPreset.ultraHigh:
+      // 寻找4K分辨率（3840x2160或3264x2448）
       return _pickResolution(
+            sizes,
+            minWidth: 3840,
+            minHeight: 2160,
+            preferredAspect: 16 / 9,
+          ) ??
+          _pickResolution(
             sizes,
             minWidth: 3264,
             minHeight: 2448,
@@ -1320,37 +1325,58 @@ CameraResolutionInfo? _selectCaptureInfo({
           ) ??
           _pickResolution(
             sizes,
-            minWidth: 3840,
-            minHeight: 2160,
-            preferredAspect: 16 / 9,
+            minWidth: 3000,
+            minHeight: 2000,
           ) ??
           sizes.first;
+
     case ResolutionPreset.veryHigh:
+      // 寻找1080p分辨率
       return _pickResolution(
             sizes,
             minWidth: 1920,
             minHeight: 1080,
             preferredAspect: 16 / 9,
           ) ??
+          _pickResolution(
+            sizes,
+            minWidth: 1800,
+            minHeight: 1000,
+          ) ??
           sizes.first;
+
     case ResolutionPreset.high:
+      // 寻找720p分辨率
       return _pickResolution(
             sizes,
             minWidth: 1280,
             minHeight: 720,
             preferredAspect: 16 / 9,
           ) ??
+          _pickResolution(
+            sizes,
+            minWidth: 1200,
+            minHeight: 700,
+          ) ??
           sizes.first;
+
     case ResolutionPreset.medium:
+      // 寻找480p分辨率
       return _pickResolution(
             sizes,
             minWidth: 720,
             minHeight: 480,
             preferredAspect: 3 / 2,
           ) ??
+          _pickResolution(
+            sizes,
+            minWidth: 640,
+            minHeight: 480,
+          ) ??
           sizes.first;
+
     case ResolutionPreset.low:
-      return sizes.last;
+      return sizes.last; // 返回最低分辨率
   }
 }
 
